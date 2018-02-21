@@ -1,0 +1,6 @@
+[package]
+name = "opalite"
+version = "0.1.0"
+authors = ["Callym <hi@callym.com>"]
+
+[dependencies]

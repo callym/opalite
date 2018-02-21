@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "opalite",
+    "opalite_macro",
+    "examples/simple",
+]
