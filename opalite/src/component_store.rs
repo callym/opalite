@@ -1,6 +1,8 @@
 use std::sync::{ Arc, Mutex };
 use anymap::AnyMap;
 use crate::{
+    Component,
+    ComponentIter,
     Id,
     MapStore,
     Store,
@@ -55,6 +57,13 @@ impl ComponentStores {
         match self.get::<S>() {
             Some(store) => store.do_with(id, fun),
             None => None,
+        }
+    }
+
+    pub fn iter<S: 'static + Store>(&self) -> ComponentIter<S::Component> {
+        match self.get::<S>() {
+            Some(store) => store.iter(),
+            None => ComponentIter::new(vec![]),
         }
     }
 }

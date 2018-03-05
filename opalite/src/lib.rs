@@ -10,11 +10,11 @@
 
 extern crate anymap;
 extern crate failure;
-extern crate fibers;
 #[macro_use] extern crate futures;
+extern crate glutin;
 extern crate uuid;
 
-pub use futures::Future;
+pub use futures::{ Future, FutureExt };
 
 mod component_store;
 mod game_loop;
@@ -39,6 +39,7 @@ pub use message::{
 
 pub use store::{
     Component,
+    ComponentIter,
     Id,
     Store,
     HashStore,

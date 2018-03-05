@@ -1,5 +1,5 @@
 use std::sync::{ Arc, Mutex };
-use fibers::sync::oneshot::{ self, Receiver };
+use futures::channel::oneshot::{ self, Receiver };
 use futures::{ Future, future::lazy };
 
 pub trait Message: 'static + Send + Sized {

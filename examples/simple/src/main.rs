@@ -6,6 +6,7 @@ use opalite::{
     Component,
     ComponentStores,
     Future,
+    FutureExt,
     GameLoop,
     Handler,
     HashStore,
@@ -22,7 +23,7 @@ struct Foo {
 impl Component for Foo { }
 
 fn main() {
-    let mut game_loop = GameLoop::new().unwrap();
+    let mut game_loop = GameLoop::new();
 
     let x = 50;
     let y = 50;
@@ -45,13 +46,9 @@ fn main() {
         map_store.do_tile_at((15, 15, 10), |tile| tile.entities.insert(foo_boo_id));
     });
 
-
-    if let Some(map_store) = stores.get::<MapStore>() {
-        for tile in map_store.get_all() {
-            let tile = tile.lock().unwrap();
-            for id in &tile.entities {
-                println!("{:?} - {:?}", tile.coordinates(), stores.do_with_component::<HashStore<Foo>, _, _>(id, |f| f.message));
-            }
+    for tile in stores.iter::<MapStore>() {
+        for id in &tile.entities {
+            println!("{:?} - {:?}", tile.coordinates(), stores.do_with_component::<HashStore<Foo>, _, _>(id, |f| f.message));
         }
     }
 
@@ -70,27 +67,13 @@ fn main() {
         game_loop.spawn(future);
     });
 
-    if let Some(map_store) = stores.get::<MapStore>() {
-        for tile in map_store.get_all() {
-            let tile = tile.lock().unwrap();
-            for id in &tile.entities {
-                println!("{:?} - {:?}", tile.coordinates(), stores.do_with_component::<HashStore<Foo>, _, _>(id, |f| f.message));
-            }
+    for tile in stores.iter::<MapStore>() {
+        for id in &tile.entities {
+            println!("{:?} - {:?}", tile.coordinates(), stores.do_with_component::<HashStore<Foo>, _, _>(id, |f| f.message));
         }
     }
 
     println!("Hello, world!");
 
-    loop {
-        game_loop.run_tick();
-
-        if let Some(map_store) = stores.get::<MapStore>() {
-            for tile in map_store.get_all() {
-                let tile = tile.lock().unwrap();
-                for id in &tile.entities {
-                    println!("{:?} - {:?}", tile.coordinates(), stores.do_with_component::<HashStore<Foo>, _, _>(id, |f| f.message));
-                }
-            }
-        }
-    }
+    game_loop.run();
 }

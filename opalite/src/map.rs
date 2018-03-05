@@ -3,9 +3,9 @@ use std::{
     ops::DerefMut,
     sync::{ Arc, Mutex },
 };
-use fibers::sync::oneshot::Receiver;
 use futures::{
     prelude::*,
+    channel::oneshot::Receiver,
     future::*,
 };
 use crate::{

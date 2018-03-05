@@ -6,6 +6,9 @@ authors = ["Callym <hi@callym.com>"]
 [dependencies]
 anymap = "0.12"
 failure = "0.1"
-fibers = "0.1"
-futures = "0.1"
+glutin = "0.13"
 uuid = { version = "0.5", features = ["v4"] }
+
+[dependencies.futures]
+git = "https://github.com/rust-lang-nursery/futures-rs"
+rev = "a7d08e6"

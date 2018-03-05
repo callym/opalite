@@ -1,7 +1,8 @@
 use std::{
     collections::HashMap,
     default::Default,
-    sync::{ Arc, Mutex },
+    marker::PhantomData,
+    sync::{ Arc, Mutex, MutexGuard },
 };
 use uuid::Uuid;
 use crate::{
@@ -52,6 +53,36 @@ pub trait Store {
         let future = message.send(component);
         game_loop.spawn(future);
         Ok(())
+    }
+
+    fn iter(&self) -> ComponentIter<Self::Component> {
+        ComponentIter::new(self.get_all())
+    }
+}
+
+pub struct ComponentIter<'a, C: Component + 'a> {
+    components: Vec<Arc<Mutex<C>>>,
+    index: usize,
+    _marker: PhantomData<&'a Vec<Arc<Mutex<C>>>>,
+}
+
+impl<'a, C: Component + 'a> ComponentIter<'a, C> {
+    pub fn new(components: Vec<Arc<Mutex<C>>>) -> Self {
+        Self { components, index: 0, _marker: PhantomData }
+    }
+}
+
+impl<'a, C: Component + 'a> Iterator for ComponentIter<'a, C> {
+    type Item = MutexGuard<'a, C>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.components.get(self.index) {
+            Some(component) => {
+                self.index += 1;
+                Some(component.lock().unwrap())
+            },
+            None => None,
+        }
     }
 }
 
