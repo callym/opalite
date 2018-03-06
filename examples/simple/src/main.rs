@@ -14,6 +14,7 @@ use opalite::{
     MoveMessage,
     MapStore,
     Store,
+    WindowBuilder,
 };
 
 struct Foo {
@@ -23,7 +24,9 @@ struct Foo {
 impl Component for Foo { }
 
 fn main() {
-    let mut game_loop = GameLoop::new();
+    let window_builder = WindowBuilder::new()
+        .with_dimensions(1024, 768);
+    let mut game_loop = GameLoop::new("Opalite Example (Simple)", window_builder);
 
     let x = 50;
     let y = 50;

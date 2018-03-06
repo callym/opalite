@@ -11,15 +11,20 @@
 extern crate anymap;
 extern crate failure;
 #[macro_use] extern crate futures;
-extern crate glutin;
+extern crate gfx_hal as hal;
+extern crate gfx_backend_vulkan as back;
+#[macro_use] extern crate gfx_render as gfx;
 extern crate uuid;
+extern crate winit;
 
 pub use futures::{ Future, FutureExt };
+pub use winit::WindowBuilder;
 
 mod component_store;
 mod game_loop;
 mod map;
 mod message;
+mod render;
 mod store;
 
 pub use component_store::ComponentStores;
