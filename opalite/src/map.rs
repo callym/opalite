@@ -74,6 +74,7 @@ impl<'a> System<'a> for MapSystem {
 
         for position in positions.join() {
             blocked.insert(*position, true);
+//            println!("{:?}", position);
         }
 
         for message in self.receiver.messages() {

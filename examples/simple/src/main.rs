@@ -7,19 +7,20 @@ use std::collections::VecDeque;
 use opalite::{
     AiComponent,
     AiGoal,
+    EventsLoop,
     Opal,
+    OpalBuilder,
     Position,
+    WindowBuilder,
 };
 
 fn main() {
-    let mut opal = {
-        let mut systems = Opal::default_systems();
-        let world = Opal::default_world(&systems);
-        let dispatcher = Opal::default_dispatcher_start(&mut systems);
-        let dispatcher = Opal::default_dispatcher_end(dispatcher, &mut systems);
-
-        Opal::new(world, dispatcher)
-    };
+    let mut opal = OpalBuilder::new()
+        .add_dispatcher_start()
+        .add_dispatcher_end()
+        .add_dispatcher_thread_local()
+        .add_world()
+        .build();
 
     opal.world_mut().create_entity()
         .with(Position { x: 0, y: 0, z: 0 })
@@ -50,8 +51,5 @@ fn main() {
             }))
         );
 
-    loop {
-        let _ = opal.run();
-        std::thread::sleep(std::time::Duration::from_secs(1));
-    }
+    let _ = opal.run();
 }

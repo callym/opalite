@@ -1,0 +1,4 @@
+#![enable(implicit_some, unwrap_newtypes)]
+(
+    title: "Simple Example",
+)
