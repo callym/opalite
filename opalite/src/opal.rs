@@ -1,25 +1,9 @@
 use specs::{ DispatcherBuilder, Dispatcher, World };
-use crate::{ AiComponent, AiSystem, Position, MapSystem };
-
-use std::sync::{ Arc, Mutex, mpsc };
-
-#[derive(Clone)]
-pub struct MessageQueue<T>(Arc<Mutex<mpsc::Sender<T>>>);
-
-impl<T> MessageQueue<T> {
-    pub fn new(queue: mpsc::Sender<T>) -> Self {
-        MessageQueue(Arc::new(Mutex::new(queue)))
-    }
-
-    pub fn send(&mut self, message: T) {
-        let sender = self.0.lock().unwrap();
-        sender.send(message).unwrap();
-    }
-}
+use crate::{ AiComponent, AiSystem, Position, MapSystem, Shard };
 
 pub struct DefaultSystems {
-    ai_system: AiSystem,
-    map_system: MapSystem,
+    ai_system: Option<AiSystem>,
+    map_system: Option<MapSystem>,
 }
 
 pub struct Opal<'a, 'b> {
@@ -30,15 +14,20 @@ pub struct Opal<'a, 'b> {
 impl<'a, 'b> Opal<'a, 'b> {
     pub fn default_systems() -> DefaultSystems {
         DefaultSystems {
-            ai_system: AiSystem::new(),
-            map_system: MapSystem::new(),
+            ai_system: Some(AiSystem::new()),
+            map_system: Some(MapSystem::new()),
         }
     }
 
-    pub fn default_dispatcher<'c, 'd>(systems: DefaultSystems) -> DispatcherBuilder<'c, 'd> {
+    pub fn default_dispatcher_start<'c, 'd>(systems: &mut DefaultSystems) -> DispatcherBuilder<'c, 'd> {
         DispatcherBuilder::new()
-            .add(systems.map_system, "MapSystem", &[])
-            .add(systems.ai_system, "AiSystem", &["MapSystem"])
+            .add(systems.ai_system.take().unwrap(), "AiSystem", &[])
+    }
+
+    pub fn default_dispatcher_end<'c, 'd>(dispatcher: DispatcherBuilder<'c, 'd>, systems: &mut DefaultSystems) -> DispatcherBuilder<'c, 'd> {
+        dispatcher
+            .add_barrier()
+            .add(systems.map_system.take().unwrap(), "MapSystem", &[])
     }
 
     pub fn default_world(systems: &DefaultSystems) -> World {
@@ -47,7 +36,7 @@ impl<'a, 'b> Opal<'a, 'b> {
         world.register::<AiComponent>();
         world.register::<Position>();
 
-        world.add_resource(systems.map_system.sender());
+        world.add_resource(systems.map_system.as_ref().unwrap().sender());
 
         world
     }

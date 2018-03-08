@@ -15,6 +15,7 @@ extern crate failure;
 extern crate gfx_hal as hal;
 extern crate gfx_backend_vulkan as back;
 #[macro_use] extern crate gfx_render as gfx;
+extern crate owning_ref;
 pub extern crate specs;
 #[macro_use] pub extern crate specs_derive;
 extern crate uuid;
@@ -26,6 +27,7 @@ pub use winit::WindowBuilder;
 mod ai;
 mod map;
 mod opal;
+mod system;
 
 pub use ai::{
     AiComponent,
@@ -39,4 +41,13 @@ pub use map::{
     MapSystem,
 };
 
-pub use opal::{ MessageQueue, Opal };
+pub use opal::Opal;
+
+pub use system::{
+    Message,
+    MessageIter,
+    MessageQueue,
+    MessageReceiver,
+    MessageSender,
+    Shard,
+};

@@ -1,6 +1,6 @@
 use std::{ collections::HashMap, ops, sync::mpsc };
 use specs::{ Entity, ReadStorage, System, VecStorage, WriteStorage };
-use crate::MessageQueue;
+use crate::{ Message, MessageQueue, MessageSender, MessageReceiver, Shard };
 
 #[derive(Component, Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[component(VecStorage)]
@@ -41,23 +41,25 @@ pub enum MapMessage {
     Move { entity: Entity, position: Position, absolute: bool, reply: Option<mpsc::SyncSender<bool>> },
 }
 
+impl Message for MapMessage { }
+
 pub struct MapSystem {
-    messages: mpsc::Receiver<MapMessage>,
-    sender: MessageQueue<MapMessage>,
+    receiver: MessageReceiver<MapMessage>,
+    sender: MessageSender<MapMessage>,
 }
 
 impl MapSystem {
     pub fn new() -> Self {
-        let (sender, receiver) = mpsc::channel();
-        let sender = MessageQueue::new(sender);
+        let (sender, receiver) = MessageQueue::new();
 
-        Self {
-            messages: receiver,
-            sender: sender,
-        }
+        Self { sender, receiver }
     }
+}
 
-    pub fn sender(&self) -> MessageQueue<MapMessage> {
+impl<'a> Shard<'a> for MapSystem {
+    type Message = MapMessage;
+
+    fn sender(&self) -> MessageSender<Self::Message> {
         self.sender.clone()
     }
 }
@@ -74,7 +76,7 @@ impl<'a> System<'a> for MapSystem {
             blocked.insert(*position, true);
         }
 
-        for message in self.messages.try_iter() {
+        for message in self.receiver.messages() {
             use self::MapMessage::*;
             match message {
                 Move { entity, position, absolute, reply } => {

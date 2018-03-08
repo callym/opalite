@@ -13,9 +13,10 @@ use opalite::{
 
 fn main() {
     let mut opal = {
-        let systems = Opal::default_systems();
+        let mut systems = Opal::default_systems();
         let world = Opal::default_world(&systems);
-        let dispatcher = Opal::default_dispatcher(systems);
+        let dispatcher = Opal::default_dispatcher_start(&mut systems);
+        let dispatcher = Opal::default_dispatcher_end(dispatcher, &mut systems);
 
         Opal::new(world, dispatcher)
     };
