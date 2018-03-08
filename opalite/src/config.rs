@@ -4,10 +4,16 @@ use ron;
 use crate::{ ShaderKey };
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum ShaderLocation {
+    Builtin(PathBuf),
+    Custom(PathBuf),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
     pub title: String,
     pub window_dimensions: (u32, u32),
-    pub shaders: HashMap<ShaderKey, PathBuf>,
+    pub shaders: HashMap<ShaderKey, ShaderLocation>,
 }
 
 impl Config {
@@ -27,7 +33,9 @@ impl Config {
         }
 
         if let Some(shaders) = other.shaders {
-            self.shaders.extend(shaders);
+            for (key, value) in shaders.into_iter() {
+                self.shaders.insert(key, ShaderLocation::Custom(value));
+            }
         }
     }
 }

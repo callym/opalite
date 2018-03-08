@@ -10,8 +10,9 @@
 )]
 
 extern crate anymap;
-extern crate failure;
+#[macro_use] extern crate failure;
 #[macro_use] extern crate futures;
+extern crate glsl_to_spirv;
 extern crate gfx_hal as hal;
 extern crate gfx_backend_vulkan as back;
 #[macro_use] extern crate gfx_render as gfx;
@@ -39,7 +40,11 @@ pub use ai::{
     AiSystem,
 };
 
-pub use config::{ Config, ConfigBuilder };
+pub use config::{
+    Config,
+    ConfigBuilder,
+    ShaderLocation,
+};
 
 pub use map::{
     Position,

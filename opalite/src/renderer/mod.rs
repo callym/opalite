@@ -1,4 +1,7 @@
+use std::{ collections::HashMap, path::PathBuf };
 use back::{ self, Backend as B };
+use failure::{ self, Error };
+use glsl_to_spirv::{ self, ShaderType, SpirvOutput };
 use gfx::{
     self,
     allocators::StackAllocator as Allocator,
@@ -14,12 +17,14 @@ use hal::{
 };
 use specs::{ Entities, FetchMut, ReadStorage, System, VecStorage, WriteStorage };
 use winit::Window;
-use crate::{ Config };
+use crate::{ Config, ShaderLocation };
 
 mod shader;
-pub use self::shader::{ ShaderKey };
+pub use self::shader::{ ShaderKey, Shader };
 
 pub struct Renderer {
+    config: Config,
+    shaders: HashMap<ShaderKey, Shader>,
     window: Window,
 }
 
@@ -42,9 +47,36 @@ impl Renderer {
         let (mut context, backbuffers) = gfx::Context::<B, hal::Graphics>::init::<ColorFormat>(surface, adapter).unwrap();
         let mut device = (*context.ref_device()).clone();
 
-        Self {
+        let mut renderer = Self {
+            config,
+            shaders: HashMap::new(),
             window,
-        }
+        };
+
+        renderer.shaders = renderer.config.shaders.keys()
+            .map(|k| (k.clone(), renderer.load_shader(k).unwrap()))
+            .collect::<HashMap<_, _>>();
+
+        renderer
+    }
+
+    pub fn load_shader(&self, shader: &ShaderKey) -> Result<Shader, Error> {
+        ensure!(self.config.shaders.contains_key(&shader), "Shader isn't in Opal.ron");
+
+        let path = match self.config.shaders.get(&shader).unwrap() {
+            ShaderLocation::Builtin(path) => {
+                let mut base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+                base.push(path);
+                base
+            },
+            ShaderLocation::Custom(path) => {
+                let mut base = PathBuf::from(::std::env::var("CARGO_MANIFEST_DIR").unwrap());
+                base.push(path);
+                base
+            },
+        };
+
+        Shader::load(&path)
     }
 }
 
