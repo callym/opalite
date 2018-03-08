@@ -3,6 +3,7 @@
     conservative_impl_trait,
     crate_in_paths,
     get_type_id,
+    match_default_bindings,
     nll,
     specialization,
     universal_impl_trait,
@@ -14,38 +15,50 @@ extern crate failure;
 extern crate gfx_hal as hal;
 extern crate gfx_backend_vulkan as back;
 #[macro_use] extern crate gfx_render as gfx;
+extern crate owning_ref;
+extern crate ron;
+#[macro_use] extern crate serde;
+pub extern crate specs;
+#[macro_use] pub extern crate specs_derive;
 extern crate uuid;
 extern crate winit;
 
 pub use futures::{ Future, FutureExt };
-pub use winit::WindowBuilder;
+pub use winit::{ EventsLoop, WindowBuilder };
 
-mod component_store;
-mod game_loop;
+mod ai;
+mod config;
 mod map;
-mod message;
-mod render;
-mod store;
+mod opal;
+mod renderer;
+mod system;
 
-pub use component_store::ComponentStores;
+pub use ai::{
+    AiComponent,
+    AiGoal,
+    AiSystem,
+};
 
-pub use game_loop::GameLoop;
+pub use config::{ Config, ConfigBuilder };
 
 pub use map::{
-    MapStore,
-    MoveMessage,
-    Tile,
+    Position,
+    MapMessage,
+    MapSystem,
 };
 
-pub use message::{
-    Handler,
+pub use opal::{ OpalBuilder, Opal };
+
+pub use renderer::{
+    Renderer,
+    ShaderKey,
+};
+
+pub use system::{
     Message,
-};
-
-pub use store::{
-    Component,
-    ComponentIter,
-    Id,
-    Store,
-    HashStore,
+    MessageIter,
+    MessageQueue,
+    MessageReceiver,
+    MessageSender,
+    Shard,
 };

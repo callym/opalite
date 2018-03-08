@@ -1,0 +1,8 @@
+#![enable(implicit_some, unwrap_newtypes)]
+(
+    title: "Opalite",
+    window_dimensions: (1024, 768),
+    shaders: {
+        "main": "resources/shaders/main",
+    },
+)

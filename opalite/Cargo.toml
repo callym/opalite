@@ -8,6 +8,12 @@ anymap = "0.12"
 failure = "0.1"
 gfx_window_glutin = "0.12"
 glutin = "0.13"
+owning_ref = "0.3"
+ron = "0.2"
+serde = "1.0"
+serde_derive = "1.0"
+specs = "0.10"
+specs-derive = "0.1"
 winit = "0.10"
 uuid = { version = "0.5", features = ["v4"] }
 
@@ -20,6 +26,10 @@ git = "https://github.com/gfx-rs/gfx"
 rev = "506ba0a"
 
 [dependencies.gfx-render]
+git = "https://github.com/gfx-rs/gfx"
+rev = "506ba0a"
+
+[dependencies.gfx-backend-dx12]
 git = "https://github.com/gfx-rs/gfx"
 rev = "506ba0a"
 
