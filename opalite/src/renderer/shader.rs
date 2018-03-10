@@ -1,6 +1,7 @@
-use std::{ fs::File, io::Read, path::PathBuf };
+use std::{ fs::File, io::Read, ops::Drop, path::PathBuf };
 use failure::{ self, Error };
 use glsl_to_spirv::{ self, ShaderType };
+use crate::{ Config, ShaderLocation };
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone)]
 pub struct ShaderKey(String);
@@ -11,6 +12,7 @@ impl ShaderKey {
     }
 }
 
+#[derive(Clone)]
 pub struct Shader {
     pub vertex: Vec<u8>,
     pub fragment: Vec<u8>,
@@ -57,5 +59,24 @@ impl Shader {
         let fragment = compile_shader(path.clone(), ShaderType::Fragment)?;
 
         Ok(Self { vertex, fragment })
+    }
+
+    pub fn load_from_config(config: &Config, shader: &ShaderKey) -> Result<Shader, Error> {
+        ensure!(config.shaders.contains_key(&shader), "Shader isn't in Opal.ron");
+
+        let path = match config.shaders.get(&shader).unwrap() {
+            ShaderLocation::Builtin(path) => {
+                let mut base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+                base.push(path);
+                base
+            },
+            ShaderLocation::Custom(path) => {
+                let mut base = PathBuf::from(::std::env::var("CARGO_MANIFEST_DIR").unwrap());
+                base.push(path);
+                base
+            },
+        };
+
+        Shader::load(&path)
     }
 }

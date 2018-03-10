@@ -1,7 +1,15 @@
-use ron::de;
+use std::cmp::PartialEq;
 use specs::{ DispatcherBuilder, Dispatcher, World };
-use winit::{ EventsLoop, WindowBuilder };
-use crate::{ AiComponent, AiSystem, Config, ConfigBuilder, MapMessage, MessageSender, Position, MapSystem, Renderer, Shard };
+use winit::{ EventsLoop, WindowBuilder, Window };
+use crate::{ AiComponent, AiSystem, Config, ConfigBuilder, MapMessage, MessageSender, ModelKey, MapSystem, Position, Renderer, Shard };
+
+pub struct WindowClosed(bool);
+
+impl PartialEq<bool> for WindowClosed {
+    fn eq(&self, other: &bool) -> bool {
+        &self.0 == other
+    }
+}
 
 pub struct DefaultSystems {
     ai_system: Option<AiSystem>,
@@ -26,6 +34,7 @@ pub struct Opal<'a, 'b> {
     config: Config,
     dispatcher: Dispatcher<'a, 'b>,
     events_loop: EventsLoop,
+    window: Window,
     world: World,
 }
 
@@ -43,6 +52,7 @@ pub struct PartialOpalBuilder<'a, 'b, S> {
     default_systems: DefaultSystems,
     dispatcher: Option<DispatcherBuilder<'a, 'b>>,
     events_loop: EventsLoop,
+    window: Option<Window>,
     world: Option<World>,
     #[allow(dead_code)]
     state: S,
@@ -64,6 +74,7 @@ impl OpalBuilder {
             default_systems: DefaultSystems::new(),
             dispatcher: None,
             events_loop: EventsLoop::new(),
+            window: None,
             world: None,
             state: BuilderState::New,
         }
@@ -86,6 +97,7 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::New> {
             default_systems: self.default_systems,
             dispatcher: Some(dispatcher),
             events_loop: self.events_loop,
+            window: None,
             world: self.world,
             state: BuilderState::DispatcherStart,
         }
@@ -104,6 +116,7 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::DispatcherStart> {
             default_systems: self.default_systems,
             dispatcher: Some(dispatcher),
             events_loop: self.events_loop,
+            window: None,
             world: self.world,
             state: BuilderState::DispatcherEnd,
         }
@@ -121,13 +134,14 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::DispatcherEnd> {
         let dispatcher = self.dispatcher.take()
             .unwrap()
             .add_barrier()
-            .add_thread_local(Renderer::new(self.config.clone(), window));
+            .add_thread_local(Renderer::new(self.config.clone(), &window));
 
         PartialOpalBuilder {
             config: self.config,
             default_systems: self.default_systems,
             dispatcher: Some(dispatcher),
             events_loop: self.events_loop,
+            window: Some(window),
             world: self.world,
             state: BuilderState::DispatcherThreadLocal,
         }
@@ -140,10 +154,12 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::DispatcherThreadLocal> {
             let mut world = World::new();
 
             world.register::<AiComponent>();
+            world.register::<ModelKey>();
             world.register::<Position>();
 
             world.add_resource(self.default_systems.map_system_sender.take().unwrap());
             world.add_resource(self.config.clone());
+            world.add_resource(WindowClosed(false));
 
             world
         };
@@ -153,6 +169,7 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::DispatcherThreadLocal> {
             default_systems: self.default_systems,
             dispatcher: self.dispatcher,
             events_loop: self.events_loop,
+            window: self.window,
             world: Some(world),
             state: BuilderState::World,
         }
@@ -161,11 +178,12 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::DispatcherThreadLocal> {
 
 impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::World> {
     pub fn build(self) -> Opal<'a, 'b> {
-        let PartialOpalBuilder { config, dispatcher, events_loop, world, .. } = self;
+        let PartialOpalBuilder { config, dispatcher, events_loop, window, world, .. } = self;
         let dispatcher = dispatcher.unwrap().build();
+        let window = window.unwrap();
         let world = world.unwrap();
 
-        Opal { config, dispatcher, events_loop, world }
+        Opal { config, dispatcher, events_loop, window, world }
     }
 }
 
@@ -187,13 +205,14 @@ impl<'a, 'b> Opal<'a, 'b> {
 
         let Opal { events_loop, dispatcher, world, .. } = self;
 
-        let mut finished_running = None;
-
-        while finished_running.is_none() {
+        while *world.read_resource::<WindowClosed>() == false {
             events_loop.poll_events(|event| {
                 if let Event::WindowEvent { event, .. } = event {
                     match event {
-                        WindowEvent::Closed => finished_running = Some(Ok(())),
+                        WindowEvent::Closed => {
+                            let mut window_closed = world.write_resource::<WindowClosed>();
+                            *window_closed = WindowClosed(true);
+                        },
                         _ => (),
                     }
                 }
@@ -201,9 +220,9 @@ impl<'a, 'b> Opal<'a, 'b> {
 
             dispatcher.dispatch(&mut world.res);
 
-            ::std::thread::sleep(::std::time::Duration::from_millis(250));
+            //::std::thread::sleep(::std::time::Duration::from_millis(250));
         }
 
-        finished_running.unwrap()
+        Ok(())
     }
 }

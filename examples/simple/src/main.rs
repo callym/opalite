@@ -8,6 +8,8 @@ use opalite::{
     AiComponent,
     AiGoal,
     EventsLoop,
+    ModelKey,
+    ModelType,
     Opal,
     OpalBuilder,
     Position,
@@ -46,10 +48,8 @@ fn main() {
                     ]
                 }
             }),
-            Box::new(|_| {
-                panic!()
-            }))
-        );
+            Box::new(|_| panic!("AI Error"))))
+        .with(ModelKey::new(ModelType::Quad));
 
     let _ = opal.run();
 }

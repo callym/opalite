@@ -52,10 +52,16 @@ pub use map::{
     MapSystem,
 };
 
-pub use opal::{ OpalBuilder, Opal };
+pub use opal::{
+    OpalBuilder,
+    Opal,
+    WindowClosed,
+};
 
 pub use renderer::{
     Renderer,
+    ModelKey,
+    ModelType,
     ShaderKey,
 };
 

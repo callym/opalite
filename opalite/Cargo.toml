@@ -15,25 +15,26 @@ serde = "1.0"
 serde_derive = "1.0"
 specs = "0.10"
 specs-derive = "0.1"
-winit = "0.10"
+winit = "0.9"
 uuid = { version = "0.5", features = ["v4"] }
 
 [dependencies.futures]
 git = "https://github.com/rust-lang-nursery/futures-rs"
 rev = "a7d08e6"
 
+# baae50e - Jan 2nd (before the mapping functions were temporarily removed)
 [dependencies.gfx-hal]
 git = "https://github.com/gfx-rs/gfx"
-rev = "506ba0a"
+rev = "baae50e"
 
 [dependencies.gfx-render]
 git = "https://github.com/gfx-rs/gfx"
-rev = "506ba0a"
+rev = "baae50e"
 
 [dependencies.gfx-backend-dx12]
 git = "https://github.com/gfx-rs/gfx"
-rev = "506ba0a"
+rev = "baae50e"
 
 [dependencies.gfx-backend-vulkan]
 git = "https://github.com/gfx-rs/gfx"
-rev = "506ba0a"
+rev = "baae50e"
