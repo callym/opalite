@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use hal::{ self, command, Device as _Device };
+use hal::{ self, command };
 use gfx::{ self, Device };
 use back::{ self, Backend as B };
 use crate::renderer::{ ColorFormat, pipeline::pipe };
@@ -50,6 +50,10 @@ impl Framebuffers {
             scissor,
             viewport,
         }
+    }
+
+    pub fn dimensions(&self) -> (u32, u32) {
+        self.dimensions
     }
 
     pub fn scissor(&self) -> command::Rect {

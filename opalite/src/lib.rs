@@ -11,7 +11,7 @@
 
 extern crate anymap;
 #[macro_use] extern crate failure;
-#[macro_use] extern crate futures;
+extern crate futures;
 extern crate glsl_to_spirv;
 extern crate gfx_hal as hal;
 extern crate gfx_backend_vulkan as back;
@@ -23,9 +23,6 @@ pub extern crate specs;
 #[macro_use] pub extern crate specs_derive;
 extern crate uuid;
 extern crate winit;
-
-pub use futures::{ Future, FutureExt };
-pub use winit::{ EventsLoop, WindowBuilder };
 
 mod ai;
 mod config;

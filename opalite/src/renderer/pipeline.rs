@@ -1,6 +1,6 @@
 use std::{ ops::Drop, sync::{ Arc, Mutex } };
-use hal::{ self, image, pso, Primitive, Device as _Device };
-use gfx::{ self, Context, Device };
+use hal::{ self, pso, Primitive, Device as _Device };
+use gfx::{ self, Device };
 use back::Backend as B;
 use winit::Window;
 use crate::renderer::{ ColorFormat, Framebuffers, Shader, Vertex };
@@ -25,15 +25,12 @@ pub struct Pipeline {
     device: Arc<Mutex<Device<B>>>,
     framebuffers: Framebuffers,
     pipeline: pipe::Meta<B>,
-    shader: Shader,
     shader_modules: Option<(<B as hal::Backend>::ShaderModule, <B as hal::Backend>::ShaderModule)>,
 }
 
 impl Pipeline {
     pub fn new(
                 window: &Window,
-                context: &Context<B, hal::Graphics>,
-                limits: hal::Limits,
                 device_arc: Arc<Mutex<Device<B>>>,
                 desc: Arc<desc::Set<B>>,
                 desc_data: Arc<desc::Data<B>>,
@@ -72,7 +69,6 @@ impl Pipeline {
             descriptors: (desc, desc_data),
             framebuffers,
             pipeline,
-            shader,
             shader_modules: Some((vs, fs)),
         }
     }

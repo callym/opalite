@@ -7,6 +7,7 @@ use crate::renderer::Allocator;
 pub struct Allocators {
     pub data: Allocator,
     pub upload: Allocator,
+    #[allow(dead_code)]
     device: Arc<Mutex<Device<B>>>,
 }
 

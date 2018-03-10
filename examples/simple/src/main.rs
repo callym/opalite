@@ -7,13 +7,10 @@ use std::collections::VecDeque;
 use opalite::{
     AiComponent,
     AiGoal,
-    EventsLoop,
     ModelKey,
     ModelType,
-    Opal,
     OpalBuilder,
     Position,
-    WindowBuilder,
 };
 
 fn main() {

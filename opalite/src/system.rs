@@ -1,4 +1,3 @@
-use std::ops;
 use std::sync::{ Arc, Mutex, MutexGuard, mpsc };
 use owning_ref::MutexGuardRefMut;
 use specs::System;

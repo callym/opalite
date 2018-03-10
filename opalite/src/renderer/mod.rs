@@ -1,9 +1,9 @@
-use std::{ collections::HashMap, iter::FromIterator, sync::{ Arc, Mutex } };
+use std::{ collections::HashMap, sync::{ Arc, Mutex } };
 use back::{ self, Backend as B };
 use gfx::{ self, pso::GraphicsPipelineData, Device };
 // gfx traits!
 use hal::{ self, command, Instance as _Instance, PhysicalDevice as _PhysicalDevice };
-use specs::{ Entities, Fetch, ReadStorage, System, VecStorage, WriteStorage };
+use specs::{ Fetch, ReadStorage, System };
 use winit::Window;
 use crate::{ Config, Position, WindowClosed };
 
@@ -32,6 +32,7 @@ pub struct Renderer {
     models: HashMap<ModelKey, Model>,
     pipelines: HashMap<ShaderKey, Pipeline>,
     // instance has to be dropped after everything else
+    #[allow(dead_code)]
     instance: back::Instance,
 }
 
@@ -60,7 +61,7 @@ impl Renderer {
             .map(|k| {
                 let k = k.clone();
                 let shader = Shader::load_from_config(&config, &k).unwrap();
-                (k, Pipeline::new(&window, &context, limits, device.clone(), desc.clone(), desc_data.clone(), shader, backbuffers.clone()))
+                (k, Pipeline::new(&window, device.clone(), desc.clone(), desc_data.clone(), shader, backbuffers.clone()))
             })
             .collect::<HashMap<_, _>>();
 

@@ -1,4 +1,4 @@
-use std::{ fs::File, io::Read, ops::Drop, path::PathBuf };
+use std::{ fs::File, io::Read, path::PathBuf };
 use failure::{ self, Error };
 use glsl_to_spirv::{ self, ShaderType };
 use crate::{ Config, ShaderLocation };

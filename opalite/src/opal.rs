@@ -34,6 +34,7 @@ pub struct Opal<'a, 'b> {
     config: Config,
     dispatcher: Dispatcher<'a, 'b>,
     events_loop: EventsLoop,
+    #[allow(dead_code)]
     window: Window,
     world: World,
 }

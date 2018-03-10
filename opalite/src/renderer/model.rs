@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use gfx::{ self, handle::Buffer, Device };
-use back::{ self, Backend as B };
+use back::Backend as B;
 use hal;
 use uuid::Uuid;
 

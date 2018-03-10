@@ -1,5 +1,5 @@
 use std::{ collections::HashMap, ops, sync::mpsc };
-use specs::{ Entity, ReadStorage, System, VecStorage, WriteStorage };
+use specs::{ Entity, System, VecStorage, WriteStorage };
 use crate::{ Message, MessageQueue, MessageSender, MessageReceiver, Shard };
 
 #[derive(Component, Copy, Clone, Debug, PartialEq, Eq, Hash)]
