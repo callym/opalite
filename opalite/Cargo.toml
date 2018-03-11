@@ -4,11 +4,9 @@ version = "0.1.0"
 authors = ["Callym <hi@callym.com>"]
 
 [dependencies]
-anymap = "0.12"
 failure = "0.1"
 gfx_window_glutin = "0.12"
 glsl-to-spirv = "0.1"
-glutin = "0.13"
 owning_ref = "0.3"
 ron = "0.2"
 serde = "1.0"

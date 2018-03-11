@@ -9,7 +9,6 @@
     universal_impl_trait,
 )]
 
-extern crate anymap;
 #[macro_use] extern crate failure;
 extern crate futures;
 extern crate glsl_to_spirv;
