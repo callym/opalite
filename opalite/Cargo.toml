@@ -4,7 +4,9 @@ version = "0.1.0"
 authors = ["Callym <hi@callym.com>"]
 
 [dependencies]
+opalite_macro = { path = "../opalite_macro", features = ["internal"] }
 failure = "0.1"
+failure_derive = "0.1"
 gfx_window_glutin = "0.12"
 glsl-to-spirv = "0.1"
 owning_ref = "0.3"
@@ -13,7 +15,7 @@ serde = "1.0"
 serde_derive = "1.0"
 specs = "0.10"
 specs-derive = "0.1"
-winit = "0.9"
+winit = "0.10"
 uuid = { version = "0.5", features = ["v4"] }
 
 [dependencies.futures]
@@ -23,16 +25,12 @@ rev = "a7d08e6"
 # baae50e - Jan 2nd (before the mapping functions were temporarily removed)
 [dependencies.gfx-hal]
 git = "https://github.com/gfx-rs/gfx"
-rev = "baae50e"
-
-[dependencies.gfx-render]
-git = "https://github.com/gfx-rs/gfx"
-rev = "baae50e"
+rev = "1eb53f7"
 
 [dependencies.gfx-backend-dx12]
 git = "https://github.com/gfx-rs/gfx"
-rev = "baae50e"
+rev = "1eb53f7"
 
 [dependencies.gfx-backend-vulkan]
 git = "https://github.com/gfx-rs/gfx"
-rev = "baae50e"
+rev = "1eb53f7"

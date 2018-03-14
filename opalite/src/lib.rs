@@ -9,12 +9,14 @@
     universal_impl_trait,
 )]
 
+#[macro_use] extern crate opalite_macro;
+
 #[macro_use] extern crate failure;
+#[macro_use] extern crate failure_derive;
 extern crate futures;
 extern crate glsl_to_spirv;
-extern crate gfx_hal as hal;
+pub extern crate gfx_hal as hal;
 extern crate gfx_backend_vulkan as back;
-#[macro_use] extern crate gfx_render as gfx;
 extern crate owning_ref;
 extern crate ron;
 #[macro_use] extern crate serde;
@@ -27,7 +29,7 @@ mod ai;
 mod config;
 mod map;
 mod opal;
-mod renderer;
+pub mod renderer;
 mod system;
 
 pub use ai::{

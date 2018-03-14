@@ -132,10 +132,12 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::DispatcherEnd> {
             .build(&self.events_loop)
             .unwrap();
 
+        let renderer = Renderer::new(self.config.clone(), &window).unwrap();
+
         let dispatcher = self.dispatcher.take()
             .unwrap()
             .add_barrier()
-            .add_thread_local(Renderer::new(self.config.clone(), &window));
+            .add_thread_local(renderer);
 
         PartialOpalBuilder {
             config: self.config,

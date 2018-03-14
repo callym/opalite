@@ -1,94 +1,329 @@
-use std::{ collections::HashMap, sync::{ Arc, Mutex } };
-use back::{ self, Backend as B };
-use gfx::{ self, pso::GraphicsPipelineData, Device };
-// gfx traits!
-use hal::{ self, command, Instance as _Instance, PhysicalDevice as _PhysicalDevice };
+use std::{ collections::HashMap, mem, ops::Drop, sync::{ Arc, Mutex } };
+use failure::{ self, Error };
 use specs::{ Fetch, ReadStorage, System };
 use winit::Window;
 use crate::{ Config, Position, WindowClosed };
 
-pub type ColorFormat = gfx::format::Rgba8Srgb;
-pub type Allocator = gfx::allocators::StackAllocator<B>;
+use back;
+use back::Backend as B;
 
-mod allocators;
-pub use self::allocators::Allocators;
+use hal;
+use hal::{ command, device as d, format as f, image as i, memory as m, pass, pso, pool };
+use hal::{ Device, Instance, PhysicalDevice, Surface, Swapchain };
+use hal::{
+    Adapter,
+    DescriptorPool,
+    FrameSync,
+    Primitive,
+    Backbuffer,
+    SwapchainConfig,
+};
+use hal::format::{ AsFormat, ChannelType, Rgba8Srgb as ColorFormat, Swizzle };
+use hal::pass::Subpass;
+use hal::pso::{ PipelineStage, ShaderStageFlags, Specialization };
+use hal::queue::Submission;
 
-mod framebuffers;
-pub use self::framebuffers::Framebuffers;
+mod buffer;
+pub use self::buffer::{ Buffer, BufferData };
 
 mod model;
-pub use self::model::{ ModelKey, Model, ModelType, Vertex };
-
-mod pipeline;
-pub use self::pipeline::{ desc, Pipeline };
+pub use self::model::{ ModelKey, Model, ModelType };
 
 mod shader;
 pub use self::shader::{ ShaderKey, Shader };
 
+const COLOR_RANGE: i::SubresourceRange = i::SubresourceRange {
+    aspects: f::Aspects::COLOR,
+    levels: 0 .. 1,
+    layers: 0 .. 1,
+};
+
+#[derive(BufferData, Copy, Clone, Debug)]
+pub struct Vertex {
+    position: [f32; 3],
+    color: [f32; 3],
+    // pads to 8
+    _padding: [f32; 2],
+}
+
+impl Vertex {
+    pub fn new(position: [f32; 3], color: [f32; 3]) -> Self {
+        Self { position, color, _padding: [0.0, 0.0] }
+    }
+}
+
+#[derive(BufferData, Copy, Clone, Debug)]
+pub struct Locals {
+
+}
+
+#[derive(Fail, Debug)]
+pub enum RenderError {
+    #[fail(display = "Cannot get window size.")]
+    WindowSize,
+    #[fail(display = "No vaild adapters found.")]
+    ChooseAdapters,
+    #[fail(display = "No valid surface format found.")]
+    NoSurfaceFormat,
+    #[fail(display = "{} Shader Module creating failed.", _0)]
+    ShaderModuleFail(&'static str),
+    #[fail(display = "Framebuffer error.")]
+    FramebufferCreation,
+}
+
 pub struct Renderer {
-    allocators: Allocators,
-    context: gfx::Context<B, hal::Graphics>,
-    device: Arc<Mutex<Device<B>>>,
     models: HashMap<ModelKey, Model>,
-    pipelines: HashMap<ShaderKey, Pipeline>,
-    // instance has to be dropped after everything else
-    #[allow(dead_code)]
-    instance: back::Instance,
+}
+
+fn choose_adapters(mut adapters: Vec<Adapter<B>>) -> Result<Adapter<B>, Error> {
+    if adapters.len() == 0 {
+        Err(RenderError::ChooseAdapters)?;
+    }
+
+    // choose best adapter here
+    Ok(adapters.remove(0))
 }
 
 impl Renderer {
-    pub fn new(config: Config, window: &Window) -> Self {
-        let instance = back::Instance::create("Opalite", 1);
-        let surface = instance.create_surface(&window);
+    pub fn new(config: Config, window: &Window) -> Result<Self, Error> {
+        let (width, height) = window.get_inner_size().ok_or(RenderError::WindowSize)?;
 
+        let instance = back::Instance::create(&config.title, 1);
+        let mut surface = instance.create_surface(window);
         let adapter = {
-            let mut adapters = instance.enumerate_adapters();
+            let adapters = instance.enumerate_adapters();
             for adapter in &adapters {
                 println!("{:?}", adapter.info);
             }
-            adapters.remove(0)
+            choose_adapters(adapters)?
         };
-        let limits = adapter.physical_device.get_limits();
+        let surface_format = surface.capabilities_and_formats(&adapter.physical_device).1
+            .map_or(Some(f::Format::Rgba8Srgb), |f| f.into_iter().find(|f| f.base_format().1 == ChannelType::Srgb))
+            .ok_or(RenderError::NoSurfaceFormat)?;
+        let memory_types = adapter.physical_device.memory_properties().memory_types;
+        let limits = adapter.physical_device.limits();
 
-        let (context, backbuffers) = gfx::Context::<B, hal::Graphics>::init::<ColorFormat>(surface, adapter).unwrap();
-        let backbuffers = Arc::new(backbuffers);
-        let mut device = (*context.ref_device()).clone();
-        let (desc, desc_data): (desc::Set<B>, desc::Data<B>) = device.create_descriptors(1).pop().unwrap();
-        let (desc, desc_data) = (Arc::new(desc), Arc::new(desc_data));
+        let (device, mut queue_group) = adapter.open_with::<_, hal::Graphics>(1, |f| surface.supports_queue_family(f))?;
         let device = Arc::new(Mutex::new(device));
 
-        let pipelines = config.shaders.keys()
-            .map(|k| {
-                let k = k.clone();
-                let shader = Shader::load_from_config(&config, &k).unwrap();
-                (k, Pipeline::new(&window, device.clone(), desc.clone(), desc_data.clone(), shader, backbuffers.clone()))
-            })
-            .collect::<HashMap<_, _>>();
+        let mut command_pool = {
+            let device = device.lock().unwrap();
+            device.create_command_pool_typed(&queue_group, pool::CommandPoolCreateFlags::empty(), 16)
+        };
 
-        let allocators = Allocators::new(device.clone(), limits);
+        let mut queue = &mut queue_group.queues[0];
 
-        Self {
-            allocators,
-            context,
-            device,
-            instance,
+        println!("Surface format: {:?}", surface_format);
+        let swap_config = SwapchainConfig::new()
+            .with_color(surface_format);
+        let (mut swap_chain, backbuffer) = {
+            let device = device.lock().unwrap();
+            device.create_swapchain(&mut surface, swap_config)
+        };
+
+        // TODO - move layouts to config files!
+        let set_layout = {
+            let device = device.lock().unwrap();
+            device.create_descriptor_set_layout(&[
+                pso::DescriptorSetLayoutBinding {
+                    binding: 0,
+                    ty: pso::DescriptorType::UniformBuffer,
+                    count: 1,
+                    stage_flags: ShaderStageFlags::FRAGMENT,
+                }
+            ])
+        };
+
+        let pipeline_layout = {
+            let device = device.lock().unwrap();
+            device.create_pipeline_layout(Some(&set_layout), &[])
+        };
+
+        let render_pass = {
+            let device = device.lock().unwrap();
+
+            let attachment = pass::Attachment {
+                format: Some(surface_format),
+                ops: pass::AttachmentOps::new(pass::AttachmentLoadOp::Clear, pass::AttachmentStoreOp::Store),
+                stencil_ops: pass::AttachmentOps::DONT_CARE,
+                layouts: i::ImageLayout::Undefined .. i::ImageLayout::Present,
+            };
+
+            let subpass = pass::SubpassDesc {
+                colors: &[(0, i::ImageLayout::ColorAttachmentOptimal)],
+                depth_stencil: None,
+                inputs: &[],
+                preserves: &[],
+            };
+
+            let dependency = pass::SubpassDependency {
+                passes: pass::SubpassRef::External .. pass::SubpassRef::Pass(0),
+                stages: PipelineStage::COLOR_ATTACHMENT_OUTPUT .. PipelineStage::COLOR_ATTACHMENT_OUTPUT,
+                accesses: i::Access::empty() .. (i::Access::COLOR_ATTACHMENT_READ | i::Access::COLOR_ATTACHMENT_WRITE),
+            };
+
+            device.create_render_pass(&[attachment], &[subpass], &[dependency])
+        };
+
+        let pipeline = {
+            let device = device.lock().unwrap();
+
+            let shader = Shader::load_from_config(&config, &ShaderKey::new("main"))?;
+            let vs_module = device.create_shader_module(&shader.vertex[..])
+                .map_err(|_| RenderError::ShaderModuleFail("Vertex"))?;
+            let fs_module = device.create_shader_module(&shader.fragment[..])
+                .map_err(|_| RenderError::ShaderModuleFail("Fragment"))?;
+
+            let pipeline = {
+                let (vs_entry, fs_entry) = (
+                    pso::EntryPoint::<B> {
+                        entry: "main",
+                        module: &vs_module,
+                        specialization: &[],
+                    },
+                    pso::EntryPoint::<B> {
+                        entry: "main",
+                        module: &fs_module,
+                        specialization: &[],
+                    },
+                );
+
+                let shader_entries = pso::GraphicsShaderSet {
+                    vertex: vs_entry,
+                    hull: None,
+                    domain: None,
+                    geometry: None,
+                    fragment: Some(fs_entry),
+                };
+
+                let subpass = Subpass { index: 0, main_pass: &render_pass };
+
+                let mut pipeline_desc = pso::GraphicsPipelineDesc::new(
+                    shader_entries,
+                    Primitive::TriangleList,
+                    pso::Rasterizer::FILL,
+                    &pipeline_layout,
+                    subpass,
+                );
+                pipeline_desc.blender.targets.push(pso::ColorBlendDesc(pso::ColorMask::ALL, pso::BlendState::ALPHA));
+
+                pipeline_desc.vertex_buffers.push(pso::VertexBufferDesc {
+                    stride: mem::size_of::<Vertex>() as u32,
+                    rate: 0,
+                });
+                // TODO - find a way to automatically impl these
+                // Vertex.position
+                pipeline_desc.attributes.push(pso::AttributeDesc {
+                    location: 0,
+                    binding: 0,
+                    element: pso::Element {
+                        // vec3
+                        format: f::Format::Rgb32Float,
+                        offset: 0,
+                    },
+                });
+                // Vertex.color
+                pipeline_desc.attributes.push(pso::AttributeDesc {
+                    location: 0,
+                    binding: 0,
+                    element: pso::Element {
+                        // vec3
+                        format: f::Format::Rgb32Float,
+                        // size of previous element - (position, vec3) - in bytes
+                        offset: 12,
+                    },
+                });
+
+                device.create_graphics_pipeline(&pipeline_desc)
+            };
+
+            device.destroy_shader_module(vs_module);
+            device.destroy_shader_module(fs_module);
+
+            pipeline
+        };
+
+        let mut desc_pool = {
+            let device = device.lock().unwrap();
+
+            device.create_descriptor_pool(
+                1,
+                &[
+                    pso::DescriptorRangeDesc {
+                        ty: pso::DescriptorType::UniformBuffer,
+                        count: 1,
+                    }
+                ],
+            )
+        };
+
+        let (frame_images, framebuffers) = match backbuffer {
+            Backbuffer::Images(images) => {
+                let device = device.lock().unwrap();
+
+                let extent = d::Extent { width, height, depth: 1 };
+                let pairs = images.into_iter()
+                    .map(|image| {
+                        let rtv = device.create_image_view(&image, surface_format, Swizzle::NO, COLOR_RANGE.clone());
+                        match rtv {
+                            Ok(rtv) => Ok((image, rtv)),
+                            Err(err) => Err(err),
+                        }
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                let fbos = pairs.iter()
+                    .map(|&(_, ref rtv)| device.create_framebuffer(&render_pass, Some(rtv), extent))
+                    .collect::<Result<Vec<_>, _>>().map_err(|_| RenderError::FramebufferCreation)?;
+
+                (pairs, fbos)
+            },
+            Backbuffer::Framebuffer(fbo) => (Vec::new(), vec![fbo]),
+        };
+
+        println!("Memory types: {:?}", memory_types);
+
+        let vertex_buffer = Buffer::<Vertex, B>::new(device.clone(), 1, hal::buffer::Usage::VERTEX, &memory_types)?;
+
+        let mut local_buffer = Buffer::<Locals, B>::new(device.clone(), 1, hal::buffer::Usage::UNIFORM, &memory_types)?;
+        local_buffer.write(Locals {
+
+        });
+
+        let viewport = command::Viewport {
+            rect: command::Rect {
+                x: 0,
+                y: 0,
+                w: width as _,
+                h: height as _,
+            },
+            depth: 0.0 .. 1.0,
+        };
+
+        let (mut frame_semaphore, mut frame_fence) = {
+            let device = device.lock().unwrap();
+            // TODO: remove fence
+            (device.create_semaphore(), device.create_fence(false))
+        };
+
+        Ok(Self {
             models: HashMap::new(),
-            pipelines,
-        }
+        })
     }
 
     pub fn load_model(&mut self, key: &ModelKey) -> &Model {
-        let mut device = self.device.lock().unwrap();
-        let mut encoder_pool = self.context.acquire_encoder_pool();
-		let mut encoder = encoder_pool.acquire_encoder();
-
         let model = match key.ty() {
             ModelType::File(_) => unimplemented!(),
-            ModelType::Quad => Model::quad(&mut device, &mut encoder, &mut self.allocators.upload),
+            ModelType::Quad => Model { },
         };
 
         self.models.insert(key.clone(), model);
         self.models.get(&key).unwrap()
+    }
+}
+
+impl Drop for Renderer {
+    fn drop(&mut self) {
+
     }
 }
 
@@ -110,39 +345,9 @@ impl<'a> System<'a> for Renderer {
             };
         };
 
-        let pipeline = self.pipelines.get(&ShaderKey::new("main".into())).unwrap();
-        let framebuffers = pipeline.framebuffers();
-
-        let frame = self.context.acquire_frame();
-        let mut encoder_pool = self.context.acquire_encoder_pool();
-        let mut encoder = encoder_pool.acquire_encoder();
-
-        let (backbuffer, framebuffer, frame_rtv) = framebuffers.get_frame_resources(frame.id());
-
-        encoder.clear_color(&backbuffer.color, command::ClearColor::Float([1.0; 4]));
-
         for (position, model_key) in (&positions, &model_keys).join() {
             // this unwrap is safe because all the models are added at the top of the function.
             let model = self.models.get(model_key).unwrap();
-
-            let data = pipeline::pipe::Data {
-                desc: pipeline.descriptors(),
-                color: frame_rtv,
-                vertices: &model.vertex_buffer,
-                viewports: &[framebuffers.viewport()],
-                scissors: &[framebuffers.scissor()],
-                framebuffer,
-            };
-
-            let mut data = data.begin_renderpass(&mut encoder, &pipeline.pipeline());
-            data.bind_index_buffer(hal::buffer::IndexBufferView {
-                buffer: &model.index_buffer.as_ref().resource(),
-                offset: 0,
-                index_type: hal::IndexType::U32,
-            });
-            data.draw_indexed(0..model.index_count, 0, 0..1);
         }
-
-        self.context.present(vec![encoder.finish()]);
     }
 }
