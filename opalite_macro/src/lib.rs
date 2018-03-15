@@ -47,7 +47,7 @@ fn attr_to_number<'a>(attrs: impl Iterator<Item = &'a Attribute>, attr_name: &st
 fn field_to_format(field: Tokens) -> Tokens {
     let pre = quote!(hal::format::Format);
 
-    if field == quote!(f32) {
+    if field == quote!(f32) || field == quote!([f32; 1]) {
         return quote!(#pre::R32Float);
     }
 
@@ -82,13 +82,12 @@ fn attribute_desc(location: u64, binding: u64, format: Tokens) -> Tokens {
     }
 }
 
-#[proc_macro_derive(BufferData, attributes(location, binding))]
+#[proc_macro_derive(BufferData, attributes(binding))]
 pub fn derive_buffer_data(input: TokenStream) -> TokenStream {
     let input: DeriveInput = syn::parse(input).unwrap();
     let name = input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
-    let location = attr_to_number(input.attrs.iter(), "location", Some(0));
     let binding = attr_to_number(input.attrs.iter(), "binding", Some(0));
 
     let types: Vec<syn::Type> = match input.data {
@@ -105,7 +104,8 @@ pub fn derive_buffer_data(input: TokenStream) -> TokenStream {
     };
     let fields = types.iter()
         .map(|f| field_to_format(quote!(#f)))
-        .map(|f| attribute_desc(location, binding, f))
+        .enumerate()
+        .map(|(i, f)| attribute_desc(i as u64, binding, f))
         .collect::<Vec<_>>();
 
     let dummy = Ident::from(format!("opalite___derive_buffer_data___{}", name));
@@ -126,9 +126,13 @@ pub fn derive_buffer_data(input: TokenStream) -> TokenStream {
 
     let derive = quote! {
         mod #dummy {
+            #![allow(unused_assignments, unused_imports, dead_code)]
+
             #imports
 
             impl #impl_generics BufferData for #name #ty_generics #where_clause {
+                const STRIDE: u64 = std::mem::size_of::<Self>() as u64;
+
                 fn desc() -> Vec<hal::pso::AttributeDesc> {
                     let mut attrs = vec![];
                     let mut offset = 0;

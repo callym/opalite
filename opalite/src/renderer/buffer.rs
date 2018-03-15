@@ -1,26 +1,15 @@
 use std::{ marker::PhantomData, mem, ops::Drop, sync::{ Arc, Mutex } };
 use failure::Error;
 use hal;
-use hal::{ buffer, command, device as d, format as f, image as i, memory as m, pass, pso, pool };
-use hal::{ Backend, Instance, PhysicalDevice, Surface, Swapchain };
-use hal::{
-    Adapter,
-    DescriptorPool,
-    Device,
-    FrameSync,
-    Primitive,
-    Backbuffer,
-    SwapchainConfig,
-};
-use hal::format::{ AsFormat, ChannelType, Rgba8Srgb as ColorFormat, Swizzle };
-use hal::pass::Subpass;
-use hal::pso::{ PipelineStage, ShaderStageFlags, Specialization };
-use hal::queue::Submission;
+use hal::{ buffer, memory as m, pso };
+use hal::{ Backend, Device };
 
 #[derive(Fail, Debug)]
 pub enum BufferError {
-    #[fail(display = "Cannot get window size.")]
+    #[fail(display = "Cannot find valid memory type")]
     UploadType,
+    #[fail(display = "Cannot create a buffer from ZST")]
+    ZST,
 }
 
 pub struct Buffer<D: BufferData, B: Backend> {
@@ -35,11 +24,16 @@ pub struct Buffer<D: BufferData, B: Backend> {
 
 impl<D: BufferData, B: Backend> Buffer<D, B> {
     pub fn new(device_arc: Arc<Mutex<B::Device>>, len: u64, usage: buffer::Usage, memory_types: &[hal::MemoryType]) -> Result<Self, Error> {
+        if D::STRIDE == 0 {
+            Err(BufferError::ZST)?
+        }
+
         let device = device_arc.lock().unwrap();
 
-        let buffer_len = len * D::Stride;
+        let buffer_len = len * D::STRIDE;
         let buffer_unbound = device.create_buffer(buffer_len, usage)?;
         let buffer_req = device.get_buffer_requirements(&buffer_unbound);
+
         let upload_type = memory_types.iter().enumerate()
             .position(|(id, mem_type)| {
                 buffer_req.type_mask & (1 << id) != 0 &&
@@ -59,12 +53,12 @@ impl<D: BufferData, B: Backend> Buffer<D, B> {
         })
     }
 
-    pub fn write(&mut self, data: D) -> Result<(), Error> {
-        assert!(self.len >= data.len());
+    pub fn write(&mut self, data: &[D]) -> Result<(), Error> {
+        assert!(self.len >= data.len() as u64);
 
         let device = self.device.lock().unwrap();
-        let mut writer = device.acquire_mapping_writer::<D>(&self.memory, 0..data.buffer_len())?;
-        writer.copy_from_slice(&[data]);
+        let mut writer = device.acquire_mapping_writer::<D>(&self.memory, 0..data.len() as u64 * D::STRIDE)?;
+        writer.copy_from_slice(data);
         device.release_mapping_writer(writer);
 
         Ok(())
@@ -72,6 +66,14 @@ impl<D: BufferData, B: Backend> Buffer<D, B> {
 
     pub fn buffer(&self) -> &B::Buffer {
         &self.buffer.as_ref().unwrap()
+    }
+
+    pub fn len(&self) -> u32 {
+        self.len as u32
+    }
+
+    pub fn usage(&self) -> buffer::Usage {
+        self.usage
     }
 }
 
@@ -84,21 +86,19 @@ impl<D: BufferData, B: Backend> Drop for Buffer<D, B> {
 }
 
 pub trait BufferData: Copy {
-    const Stride: u64 = mem::size_of::<Self>() as u64;
+    const STRIDE: u64;
 
     fn len(&self) -> u64 { 1 }
 
-    fn buffer_len(&self) -> u64 { self.len() * Self::Stride }
+    fn buffer_len(&self) -> u64 { self.len() * Self::STRIDE }
 
     fn desc() -> Vec<pso::AttributeDesc>;
 }
 
-impl<'a, D> BufferData for &'a [D] where D: BufferData {
-    default fn len(&self) -> u64 {
-        self.len() as u64
-    }
+impl BufferData for u32 {
+    const STRIDE: u64 = mem::size_of::<Self>() as u64;
 
-    default fn desc() -> Vec<pso::AttributeDesc> {
-        D::desc()
+    fn desc() -> Vec<pso::AttributeDesc> {
+        Vec::new()
     }
 }

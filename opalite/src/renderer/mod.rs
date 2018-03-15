@@ -1,5 +1,5 @@
 use std::{ collections::HashMap, mem, ops::Drop, sync::{ Arc, Mutex } };
-use failure::{ self, Error };
+use failure::Error;
 use specs::{ Fetch, ReadStorage, System };
 use winit::Window;
 use crate::{ Config, Position, WindowClosed };
@@ -8,8 +8,8 @@ use back;
 use back::Backend as B;
 
 use hal;
-use hal::{ command, device as d, format as f, image as i, memory as m, pass, pso, pool };
-use hal::{ Device, Instance, PhysicalDevice, Surface, Swapchain };
+use hal::{ command, device as d, format as f, image as i, pass, pso, pool };
+use hal::{ Backend, Device, Instance, PhysicalDevice, Surface, Swapchain };
 use hal::{
     Adapter,
     DescriptorPool,
@@ -18,16 +18,16 @@ use hal::{
     Backbuffer,
     SwapchainConfig,
 };
-use hal::format::{ AsFormat, ChannelType, Rgba8Srgb as ColorFormat, Swizzle };
+use hal::format::{ ChannelType, Swizzle };
 use hal::pass::Subpass;
-use hal::pso::{ PipelineStage, ShaderStageFlags, Specialization };
+use hal::pso::{ PipelineStage, ShaderStageFlags };
 use hal::queue::Submission;
 
 mod buffer;
 pub use self::buffer::{ Buffer, BufferData };
 
 mod model;
-pub use self::model::{ ModelKey, Model, ModelType };
+pub use self::model::{ ModelKey, Model, ModelType, Vertex };
 
 mod shader;
 pub use self::shader::{ ShaderKey, Shader };
@@ -39,22 +39,8 @@ const COLOR_RANGE: i::SubresourceRange = i::SubresourceRange {
 };
 
 #[derive(BufferData, Copy, Clone, Debug)]
-pub struct Vertex {
-    position: [f32; 3],
-    color: [f32; 3],
-    // pads to 8
-    _padding: [f32; 2],
-}
-
-impl Vertex {
-    pub fn new(position: [f32; 3], color: [f32; 3]) -> Self {
-        Self { position, color, _padding: [0.0, 0.0] }
-    }
-}
-
-#[derive(BufferData, Copy, Clone, Debug)]
 pub struct Locals {
-
+    data: f32,
 }
 
 #[derive(Fail, Debug)]
@@ -72,7 +58,25 @@ pub enum RenderError {
 }
 
 pub struct Renderer {
+    command_pool: hal::CommandPool<B, hal::Graphics>,
+    desc_set: <B as Backend>::DescriptorSet,
+    device: Arc<Mutex<back::Device>>,
+    framebuffers: Vec<<B as Backend>::Framebuffer>,
+    frame_fence: <B as Backend>::Fence,
+    frame_semaphore: <B as Backend>::Semaphore,
+    _limits: hal::Limits,
+    memory_types: Vec<hal::MemoryType>,
+    pipeline: <B as Backend>::GraphicsPipeline,
+    pipeline_layout: <B as Backend>::PipelineLayout,
+    queue_group: hal::QueueGroup<B, hal::Graphics>,
+    render_pass: <B as Backend>::RenderPass,
+    viewport: hal::command::Viewport,
+    swap_chain: <B as Backend>::Swapchain,
+    //
+    locals_buffer: Buffer<Locals, B>,
     models: HashMap<ModelKey, Model>,
+    //
+    _instance: back::Instance,
 }
 
 fn choose_adapters(mut adapters: Vec<Adapter<B>>) -> Result<Adapter<B>, Error> {
@@ -103,20 +107,17 @@ impl Renderer {
         let memory_types = adapter.physical_device.memory_properties().memory_types;
         let limits = adapter.physical_device.limits();
 
-        let (device, mut queue_group) = adapter.open_with::<_, hal::Graphics>(1, |f| surface.supports_queue_family(f))?;
+        let (device, queue_group) = adapter.open_with::<_, hal::Graphics>(1, |f| surface.supports_queue_family(f))?;
         let device = Arc::new(Mutex::new(device));
 
-        let mut command_pool = {
+        let command_pool = {
             let device = device.lock().unwrap();
             device.create_command_pool_typed(&queue_group, pool::CommandPoolCreateFlags::empty(), 16)
         };
 
-        let mut queue = &mut queue_group.queues[0];
-
-        println!("Surface format: {:?}", surface_format);
         let swap_config = SwapchainConfig::new()
             .with_color(surface_format);
-        let (mut swap_chain, backbuffer) = {
+        let (swap_chain, backbuffer) = {
             let device = device.lock().unwrap();
             device.create_swapchain(&mut surface, swap_config)
         };
@@ -129,7 +130,7 @@ impl Renderer {
                     binding: 0,
                     ty: pso::DescriptorType::UniformBuffer,
                     count: 1,
-                    stage_flags: ShaderStageFlags::FRAGMENT,
+                    stage_flags: ShaderStageFlags::VERTEX | ShaderStageFlags::FRAGMENT,
                 }
             ])
         };
@@ -211,30 +212,10 @@ impl Renderer {
                     stride: mem::size_of::<Vertex>() as u32,
                     rate: 0,
                 });
-                // TODO - find a way to automatically impl these
-                // Vertex.position
-                pipeline_desc.attributes.push(pso::AttributeDesc {
-                    location: 0,
-                    binding: 0,
-                    element: pso::Element {
-                        // vec3
-                        format: f::Format::Rgb32Float,
-                        offset: 0,
-                    },
-                });
-                // Vertex.color
-                pipeline_desc.attributes.push(pso::AttributeDesc {
-                    location: 0,
-                    binding: 0,
-                    element: pso::Element {
-                        // vec3
-                        format: f::Format::Rgb32Float,
-                        // size of previous element - (position, vec3) - in bytes
-                        offset: 12,
-                    },
-                });
 
-                device.create_graphics_pipeline(&pipeline_desc)
+                pipeline_desc.attributes.extend(Vertex::desc());
+
+                device.create_graphics_pipeline(&pipeline_desc)?
             };
 
             device.destroy_shader_module(vs_module);
@@ -257,7 +238,9 @@ impl Renderer {
             )
         };
 
-        let (frame_images, framebuffers) = match backbuffer {
+        let desc_set = desc_pool.allocate_set(&set_layout);
+
+        let (_frame_images, framebuffers) = match backbuffer {
             Backbuffer::Images(images) => {
                 let device = device.lock().unwrap();
 
@@ -280,14 +263,10 @@ impl Renderer {
             Backbuffer::Framebuffer(fbo) => (Vec::new(), vec![fbo]),
         };
 
-        println!("Memory types: {:?}", memory_types);
-
-        let vertex_buffer = Buffer::<Vertex, B>::new(device.clone(), 1, hal::buffer::Usage::VERTEX, &memory_types)?;
-
-        let mut local_buffer = Buffer::<Locals, B>::new(device.clone(), 1, hal::buffer::Usage::UNIFORM, &memory_types)?;
-        local_buffer.write(Locals {
-
-        });
+        let mut locals_buffer = Buffer::<Locals, B>::new(device.clone(), 1, hal::buffer::Usage::UNIFORM, &memory_types)?;
+        locals_buffer.write(&[Locals {
+            data: 1.0,
+        }])?;
 
         let viewport = command::Viewport {
             rect: command::Rect {
@@ -299,21 +278,39 @@ impl Renderer {
             depth: 0.0 .. 1.0,
         };
 
-        let (mut frame_semaphore, mut frame_fence) = {
+        let (frame_semaphore, frame_fence) = {
             let device = device.lock().unwrap();
             // TODO: remove fence
             (device.create_semaphore(), device.create_fence(false))
         };
 
         Ok(Self {
+            command_pool,
+            desc_set,
+            device,
+            framebuffers,
+            frame_fence,
+            frame_semaphore,
+            _limits: limits,
+            memory_types,
+            pipeline,
+            pipeline_layout,
+            queue_group,
+            render_pass,
+            viewport,
+            swap_chain,
+            //
+            locals_buffer,
             models: HashMap::new(),
+            //
+            _instance: instance,
         })
     }
 
     pub fn load_model(&mut self, key: &ModelKey) -> &Model {
         let model = match key.ty() {
             ModelType::File(_) => unimplemented!(),
-            ModelType::Quad => Model { },
+            ModelType::Quad => Model::quad([1.0, 0.0, 0.0], self.device.clone(), &self.memory_types[..]),
         };
 
         self.models.insert(key.clone(), model);
@@ -331,12 +328,12 @@ impl<'a> System<'a> for Renderer {
     type SystemData = (ReadStorage<'a, Position>, ReadStorage<'a, ModelKey>, Fetch<'a, WindowClosed>);
 
     fn run(&mut self, (positions, model_keys, window_closed): Self::SystemData) {
+        use specs::Join;
+
         if *window_closed == true {
             println!("Window Closed");
             return;
         }
-
-        use specs::Join;
 
         for model_key in model_keys.join() {
             match self.models.get(model_key) {
@@ -345,9 +342,76 @@ impl<'a> System<'a> for Renderer {
             };
         };
 
-        for (position, model_key) in (&positions, &model_keys).join() {
-            // this unwrap is safe because all the models are added at the top of the function.
-            let model = self.models.get(model_key).unwrap();
+        let Self {
+            desc_set,
+            device,
+            command_pool,
+            framebuffers,
+            frame_fence,
+            frame_semaphore,
+            locals_buffer,
+            pipeline,
+            pipeline_layout,
+            queue_group,
+            render_pass,
+            swap_chain,
+            viewport,
+            ..
+        } = self;
+
+        let device = device.lock().unwrap();
+
+        device.write_descriptor_sets(vec![
+            pso::DescriptorSetWrite {
+                set: desc_set,
+                binding: 0,
+                array_offset: 0,
+                descriptors: Some(pso::Descriptor::Buffer(locals_buffer.buffer(), Some(0)..Some(<Locals as BufferData>::STRIDE))),
+            },
+        ]);
+
+        command_pool.reset();
+        let frame = swap_chain.acquire_frame(FrameSync::Semaphore(frame_semaphore));
+
+        let mut command_buffer = command_pool.acquire_command_buffer(false);
+        command_buffer.set_viewports(&[viewport.clone()]);
+        command_buffer.set_scissors(&[viewport.rect]);
+        command_buffer.bind_graphics_pipeline(pipeline);
+
+        {
+            let mut encoder = command_buffer.begin_render_pass_inline(
+                &render_pass,
+                &framebuffers[frame.id()],
+                viewport.rect,
+                &[command::ClearValue::Color(command::ClearColor::Float([0.8, 0.8, 0.8, 1.0]))],
+            );
+            encoder.bind_graphics_descriptor_sets(pipeline_layout, 0, Some(desc_set)); //TODO
+
+            for (position, model_key) in (&positions, &model_keys).join() {
+                // this unwrap is safe because all the models are added at the top of the function.
+                let model = self.models.get(model_key).unwrap();
+
+                encoder.bind_vertex_buffers(pso::VertexBufferSet(vec![(model.vertex_buffer.buffer(), 0)]));
+                encoder.bind_index_buffer(hal::buffer::IndexBufferView {
+                    buffer: model.index_buffer.buffer(),
+                    offset: 0,
+                    index_type: hal::IndexType::U32,
+                });
+                encoder.draw_indexed(0..model.index_buffer.len(), 0, 0..1);
+            }
         }
+
+        let submit = command_buffer.finish();
+        let submission = Submission::new()
+            .wait_on(&[(&*frame_semaphore, PipelineStage::BOTTOM_OF_PIPE)])
+            .submit(Some(submit));
+
+        let mut queue = &mut queue_group.queues[0];
+        queue.submit(submission, Some(frame_fence));
+
+        // TODO: replace with semaphore
+        device.wait_for_fence(&frame_fence, !0);
+
+        swap_chain.present(&mut queue, &[]);
     }
 }

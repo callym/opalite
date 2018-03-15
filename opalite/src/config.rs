@@ -23,7 +23,7 @@ impl Config {
         ron::de::from_reader(file).map_err(|e| e.into())
     }
 
-    pub fn merge(&mut self, other: ConfigBuilder) {
+    pub fn merge(mut self, other: ConfigBuilder) -> Config {
         if let Some(title) = other.title {
             self.title = title;
         }
@@ -37,6 +37,8 @@ impl Config {
                 self.shaders.insert(key, ShaderLocation::Custom(value));
             }
         }
+
+        self
     }
 }
 
