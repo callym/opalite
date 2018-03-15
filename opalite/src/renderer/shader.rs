@@ -7,8 +7,8 @@ use crate::{ Config, ShaderLocation };
 pub struct ShaderKey(String);
 
 impl ShaderKey {
-    pub fn new(name: String) -> Self {
-        ShaderKey(name)
+    pub fn new<S: Into<String>>(name: S) -> Self {
+        ShaderKey(name.into())
     }
 }
 

@@ -1,14 +1,21 @@
-use std::path::PathBuf;
-use gfx::{ self, handle::Buffer, Device };
+use std::{ path::PathBuf, sync::{ Arc, Mutex } };
 use back::Backend as B;
-use hal;
+use hal::{ self, Backend };
 use uuid::Uuid;
+use crate::renderer::Buffer;
 
-use crate::renderer::Allocator;
+#[derive(BufferData, Copy, Clone, Debug)]
+pub struct Vertex {
+    position: [f32; 3],
+    color: [f32; 3],
+}
 
-gfx_buffer_struct! {
-    Vertex {
-        position: [f32; 2],
+impl Default for Vertex {
+    fn default() -> Self {
+        Self {
+            position: [0.0; 3],
+            color: [1.0, 1.0, 0.0],
+        }
     }
 }
 
@@ -32,59 +39,33 @@ pub enum ModelType {
 }
 
 pub struct Model {
-    pub vertex_buffer: Buffer<B, Vertex>,
-    pub vertex_count: u32,
-    pub index_buffer: Buffer<B, u32>,
-    pub index_count: u32,
+    pub vertex_buffer: Buffer<Vertex, B>,
+    pub index_buffer: Buffer<u32, B>,
 }
 
 impl Model {
-    pub(super) fn quad(device: &mut Device<B>, encoder: &mut gfx::Encoder<B, hal::Graphics>, upload: &mut Allocator) -> Model {
-        let vertices = QUAD.to_vec();
-        let vertex_count = QUAD.len() as u32;
-        let indices = (0..QUAD.len() as u32).collect::<Vec<_>>();
-        let index_count = indices.len() as u32;
+    pub(super) fn quad(color: [f32; 3], device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> Self {
+        let vertices = make_quad(color).to_vec();
+        let mut vertex_buffer = Buffer::<Vertex, B>::new(device.clone(), vertices.len() as u64, hal::buffer::Usage::VERTEX, &memory_types).unwrap();
+        vertex_buffer.write(&vertices[..]).unwrap();
 
-        let (vertex_buffer, vertex_token) = device.create_buffer::<Vertex, _>(
-			upload,
-			gfx::buffer::Usage::VERTEX,
-			vertex_count as u64
-		).unwrap();
+        let indices = (0..6 as u32).collect::<Vec<_>>();
+        let mut index_buffer = Buffer::<u32, B>::new(device.clone(), indices.len() as u64, hal::buffer::Usage::INDEX, &memory_types).unwrap();
+        index_buffer.write(&indices[..]).unwrap();
 
-        let (index_buffer, index_token) = device.create_buffer::<u32, _>(
-			upload,
-			gfx::buffer::Usage::INDEX,
-			index_count as u64
-		).unwrap();
-
-		device.write_mapping(&vertex_buffer, 0..vertex_count as u64)
-			.unwrap()
-			.copy_from_slice(&vertices[..]);
-
-		device.write_mapping(&index_buffer, 0..index_count as u64)
-			.unwrap()
-			.copy_from_slice(&indices[..]);
-
-		encoder.init_resources(vec![
-			vertex_token,
-			index_token,
-		]);
-
-        Model {
-			vertex_buffer,
-			vertex_count,
-			index_buffer,
-			index_count,
-		}
+        Self {
+            vertex_buffer,
+            index_buffer,
+        }
     }
 }
 
-const QUAD: [Vertex; 6] = [
-	Vertex { position: [ -0.5, 0.5 ] },
-	Vertex { position: [  0.5, 0.5 ] },
-	Vertex { position: [  0.5,-0.5 ] },
+fn make_quad(color: [f32; 3]) -> [Vertex; 6] {[
+  Vertex { position: [ -0.5, 0.5, 0.0 ], color, .. Default::default() },
+  Vertex { position: [  0.5, 0.5, 0.0 ], color, .. Default::default() },
+  Vertex { position: [  0.5,-0.5, 0.0 ], color, .. Default::default() },
 
-	Vertex { position: [ -0.5, 0.5 ] },
-	Vertex { position: [  0.5,-0.5 ] },
-	Vertex { position: [ -0.5,-0.5 ] },
-];
+  Vertex { position: [ -0.5, 0.5, 0.0 ], color, .. Default::default() },
+  Vertex { position: [  0.5,-0.5, 0.0 ], color, .. Default::default() },
+  Vertex { position: [ -0.5,-0.5, 0.0 ], color, .. Default::default() },
+]}

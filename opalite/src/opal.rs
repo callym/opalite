@@ -65,9 +65,16 @@ impl OpalBuilder {
     pub fn new<'a, 'b>() -> PartialOpalBuilder<'a, 'b, BuilderState::New> {
         let config = {
             let mut default_config = Config::from_file(format!("{}/Opalite.ron", env!("CARGO_MANIFEST_DIR"))).unwrap();
-            let config = ConfigBuilder::from_file(format!("{}/Opalite.ron", ::std::env::var("CARGO_MANIFEST_DIR").unwrap())).unwrap();
-            default_config.merge(config);
-            default_config
+            let cwd = {
+                let mut cwd = ::std::env::current_dir().unwrap();
+                cwd.push("Opalite.ron");
+                cwd
+            };
+
+            match ConfigBuilder::from_file(cwd) {
+                Ok(config) => default_config.merge(config),
+                Err(_) => default_config,
+            }
         };
 
         PartialOpalBuilder {
@@ -132,10 +139,12 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::DispatcherEnd> {
             .build(&self.events_loop)
             .unwrap();
 
+        let renderer = Renderer::new(self.config.clone(), &window).unwrap();
+
         let dispatcher = self.dispatcher.take()
             .unwrap()
             .add_barrier()
-            .add_thread_local(Renderer::new(self.config.clone(), &window));
+            .add_thread_local(renderer);
 
         PartialOpalBuilder {
             config: self.config,
