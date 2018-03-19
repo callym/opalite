@@ -1,6 +1,7 @@
 #![feature(
     arbitrary_self_types,
     conservative_impl_trait,
+    const_fn,
     crate_in_paths,
     get_type_id,
     match_default_bindings,
@@ -11,6 +12,8 @@
 
 #[macro_use] extern crate opalite_macro;
 
+pub extern crate bincode;
+pub extern crate cgmath;
 #[macro_use] extern crate failure;
 #[macro_use] extern crate failure_derive;
 extern crate futures;
@@ -28,12 +31,14 @@ extern crate winit;
 mod ai;
 mod config;
 mod map;
+mod mutex_ext;
 mod opal;
 pub mod renderer;
 mod system;
 
 pub use ai::{
     AiComponent,
+    AiGoalDo,
     AiGoal,
     AiSystem,
 };
@@ -45,10 +50,16 @@ pub use config::{
 };
 
 pub use map::{
+    CollisionLayer,
+    CollisionLayers,
+    InitialPosition,
     Position,
+    Map,
     MapMessage,
     MapSystem,
 };
+
+pub use mutex_ext::{ RLock, WLock };
 
 pub use opal::{
     OpalBuilder,
@@ -58,6 +69,7 @@ pub use opal::{
 
 pub use renderer::{
     Renderer,
+    ModelData,
     ModelKey,
     ModelType,
     ShaderKey,

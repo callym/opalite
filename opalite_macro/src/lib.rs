@@ -82,13 +82,24 @@ fn attribute_desc(location: u64, binding: u64, format: Tokens) -> Tokens {
     }
 }
 
-#[proc_macro_derive(BufferData, attributes(binding))]
+#[proc_macro_derive(BufferData, attributes(binding, uniform))]
 pub fn derive_buffer_data(input: TokenStream) -> TokenStream {
     let input: DeriveInput = syn::parse(input).unwrap();
     let name = input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let binding = attr_to_number(input.attrs.iter(), "binding", Some(0));
+
+    let uniform = input.attrs.iter()
+        .filter(|a| {
+            let path = a.path.clone();
+            quote!(#path) == quote!(uniform)
+        })
+        .map(|a| a.interpret_meta())
+        .filter(|a| a.is_some())
+        .map(|a| a.unwrap())
+        .next()
+        .is_some();
 
     let types: Vec<syn::Type> = match input.data {
         Data::Struct(data) => match data.fields {
@@ -124,6 +135,24 @@ pub fn derive_buffer_data(input: TokenStream) -> TokenStream {
         }
     };
 
+    let desc = if uniform {
+        quote! {
+            vec![]
+        }
+    } else {
+        quote! {
+            let mut attrs = vec![];
+            let mut offset = 0;
+
+            #(
+                attrs.push(#fields);
+                offset += std::mem::size_of::<#types>() as u32;
+            )*
+
+            attrs
+        }
+    };
+
     let derive = quote! {
         mod #dummy {
             #![allow(unused_assignments, unused_imports, dead_code)]
@@ -134,15 +163,53 @@ pub fn derive_buffer_data(input: TokenStream) -> TokenStream {
                 const STRIDE: u64 = std::mem::size_of::<Self>() as u64;
 
                 fn desc() -> Vec<hal::pso::AttributeDesc> {
-                    let mut attrs = vec![];
-                    let mut offset = 0;
+                    #desc
+                }
+            }
+        }
+    };
 
-                    #(
-                        attrs.push(#fields);
-                        offset += std::mem::size_of::<#types>() as u32;
-                    )*
+    let derive: String = format!("{}", derive);
+    let derive = syn::parse_str::<syn::ItemMod>(&derive).unwrap();
+    quote!(#derive).into()
+}
 
-                    attrs
+#[proc_macro_derive(PushConstant)]
+pub fn derive_push_constant(input: TokenStream) -> TokenStream {
+    let input: DeriveInput = syn::parse(input).unwrap();
+    let name = input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
+    let dummy = Ident::from(format!("opalite___derive_push_constant___{}", name));
+
+    let imports = if cfg!(feature = "internal") {
+        quote! {
+            extern crate std;
+            use ::{ bincode, hal, renderer };
+            use renderer::PushConstant;
+            use bincode::serialize;
+        }
+    } else {
+        quote! {
+            extern crate std;
+            extern crate opalite;
+            use self::opalite::{ bincode::serialize, hal, renderer };
+        }
+    };
+
+
+    let derive = quote! {
+        mod #dummy {
+            #![allow(unused_assignments, unused_imports, dead_code)]
+
+            #imports
+
+            impl #impl_generics PushConstant for #name #ty_generics #where_clause {
+                const SIZE: u32 = (std::mem::size_of::<Self>() / 4) as u32;
+
+                fn data(&self) -> Vec<u32> {
+                    let data = serialize(&self).unwrap();
+                    unsafe { mem::transmute::<Vec<u8>, Vec<u32>>(data) }
                 }
             }
         }

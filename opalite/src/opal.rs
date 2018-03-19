@@ -1,7 +1,25 @@
 use std::cmp::PartialEq;
+use cgmath::Vector3;
 use specs::{ DispatcherBuilder, Dispatcher, World };
 use winit::{ EventsLoop, WindowBuilder, Window };
-use crate::{ AiComponent, AiSystem, Config, ConfigBuilder, MapMessage, MessageSender, ModelKey, MapSystem, Position, Renderer, Shard };
+use crate::{
+    AiComponent,
+    AiSystem,
+    CollisionLayers,
+    Config,
+    ConfigBuilder,
+    InitialPosition,
+    MapMessage,
+    MessageSender,
+    ModelData,
+    ModelKey,
+    Map,
+    MapSystem,
+    Position,
+    Renderer,
+    RLock,
+    Shard,
+};
 
 pub struct WindowClosed(bool);
 
@@ -15,17 +33,21 @@ pub struct DefaultSystems {
     ai_system: Option<AiSystem>,
     map_system: Option<MapSystem>,
     map_system_sender: Option<MessageSender<MapMessage>>,
+    map_reader: Option<RLock<Map>>,
 }
 
 impl DefaultSystems {
-    pub fn new() -> Self {
-        let map_system = MapSystem::new();
+    pub fn new(config: &Config) -> Self {
+        let map_dimensions = config.map_dimensions.into();
+        let map_system = MapSystem::new(map_dimensions);
         let map_system_sender = map_system.sender();
+        let map_reader = map_system.map();
 
         Self {
             ai_system: Some(AiSystem::new()),
             map_system: Some(map_system),
             map_system_sender: Some(map_system_sender),
+            map_reader: Some(map_reader),
         }
     }
 }
@@ -77,9 +99,11 @@ impl OpalBuilder {
             }
         };
 
+        let default_systems = DefaultSystems::new(&config);
+
         PartialOpalBuilder {
             config,
-            default_systems: DefaultSystems::new(),
+            default_systems,
             dispatcher: None,
             events_loop: EventsLoop::new(),
             window: None,
@@ -164,9 +188,13 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::DispatcherThreadLocal> {
             let mut world = World::new();
 
             world.register::<AiComponent>();
+            world.register::<CollisionLayers>();
+            world.register::<ModelData>();
             world.register::<ModelKey>();
+            world.register::<InitialPosition>();
             world.register::<Position>();
 
+            world.add_resource(self.default_systems.map_reader.take().unwrap());
             world.add_resource(self.default_systems.map_system_sender.take().unwrap());
             world.add_resource(self.config.clone());
             world.add_resource(WindowClosed(false));

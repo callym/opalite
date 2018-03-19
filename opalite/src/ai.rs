@@ -1,10 +1,18 @@
 use std::collections::VecDeque;
-use specs::{ Entities, FetchMut, ReadStorage, System, VecStorage, WriteStorage };
-use crate::{ MapMessage, Position, MessageSender };
+use cgmath::Vector3;
+use specs::{ Entities, Fetch, FetchMut, ReadStorage, System, VecStorage, WriteStorage };
+use crate::{ Map, MapMessage, Position, RLock, MessageSender };
+
+#[derive(Clone, Debug)]
+pub enum AiGoalDo {
+    Replace(Vec<AiGoal>),
+    Queue(Vec<AiGoal>),
+    Continue,
+}
 
 #[derive(Clone, Debug)]
 pub enum AiGoal {
-    Move { start: Position, target: Position, path: VecDeque<Position> },
+    Move { start: Vector3<i32>, target: Vector3<i32>, path: VecDeque<Vector3<i32>> },
 }
 
 #[derive(Component)]
@@ -13,17 +21,23 @@ pub struct AiComponent {
     current_goal: Option<AiGoal>,
     goals: VecDeque<AiGoal>,
 
+    goal_do: Box<Fn(&Option<AiGoal>) -> AiGoalDo + Send + Sync>,
     goal_completed: Box<Fn(&Option<AiGoal>) -> Vec<AiGoal> + Send + Sync>,
     goal_failed: Box<Fn(&Option<AiGoal>) -> Vec<AiGoal> + Send + Sync>,
 }
 
 impl AiComponent {
-    pub fn new(completed: Box<Fn(&Option<AiGoal>) -> Vec<AiGoal> + Send + Sync>, failed: Box<Fn(&Option<AiGoal>) -> Vec<AiGoal> + Send + Sync>) -> Self {
+    pub fn new(
+        goal_do: Box<Fn(&Option<AiGoal>) -> AiGoalDo + Send + Sync>,
+        goal_completed: Box<Fn(&Option<AiGoal>) -> Vec<AiGoal> + Send + Sync>,
+        goal_failed: Box<Fn(&Option<AiGoal>) -> Vec<AiGoal> + Send + Sync>
+    ) -> Self {
         AiComponent {
             current_goal: None,
             goals: VecDeque::new(),
-            goal_completed: completed,
-            goal_failed: failed,
+            goal_do,
+            goal_completed,
+            goal_failed,
         }
     }
 }
@@ -43,10 +57,13 @@ impl<'a> System<'a> for AiSystem {
     type SystemData =  (Entities<'a>,
                         WriteStorage<'a, AiComponent>,
                         ReadStorage<'a, Position>,
+                        Fetch<'a, RLock<Map>>,
                         FetchMut<'a, MessageSender<MapMessage>>);
 
-    fn run(&mut self, (entities, mut ais, positions, mut map_messages): Self::SystemData) {
+    fn run(&mut self, (entities, mut ais, positions, map, mut map_messages): Self::SystemData) {
         use specs::Join;
+
+        let map = map.read().unwrap();
 
         let generate_new_goals = |ai: &mut AiComponent, goal: &Option<AiGoal>| {
             for new_goal in (ai.goal_completed)(&goal) {
@@ -55,7 +72,12 @@ impl<'a> System<'a> for AiSystem {
             ai.goals.pop_front()
         };
 
-        for (entity, ai, position) in (&*entities, &mut ais, &positions).join() {
+        for (entity, ai, _) in (&*entities, &mut ais, &positions).join() {
+            let position = match map.location(&entity) {
+                Some(position) => position,
+                None => continue,
+            };
+
             let current_goal = match &ai.current_goal {
                 Some(goal) => Some(goal.clone()),
                 None => if let Some(goal) = ai.goals.pop_front() {
@@ -73,6 +95,21 @@ impl<'a> System<'a> for AiSystem {
                 None => None,
             };
 
+            match (ai.goal_do)(&current_goal) {
+                AiGoalDo::Replace(goals) => {
+                    ai.goals.clear();
+                    for goal in goals {
+                        ai.goals.push_back(goal);
+                    }
+                },
+                AiGoalDo::Queue(goals) => {
+                    for goal in goals {
+                        ai.goals.push_back(goal);
+                    }
+                },
+                AiGoalDo::Continue => ()
+            };
+
             use self::AiGoal::*;
             match &mut current_goal {
                 Some(Move { target, path, .. }) => {
@@ -80,25 +117,25 @@ impl<'a> System<'a> for AiSystem {
                         let mut current_step = *position;
                         while (current_step.x, current_step.y) != (target.x, target.y) {
                             let next_step = if current_step.x < target.x {
-                                Position::new(1, 0, 0)
+                                Vector3::new(1, 0, 0)
                             } else if current_step.x > target.x {
-                                Position::new(-1, 0, 0)
+                                Vector3::new(-1, 0, 0)
                             } else if current_step.y < target.y {
-                                Position::new(0, 1, 0)
+                                Vector3::new(0, 1, 0)
                             } else if current_step.y > target.y {
-                                Position::new(0, -1, 0)
+                                Vector3::new(0, -1, 0)
                             } else {
-                                Position::new(0, 0, 0)
+                                Vector3::new(0, 0, 0)
                             };
                             path.push_back(next_step);
                             current_step += next_step;
                         }
                     }
 
-                    if let Some(next_position) = path.pop_front() {
+                    if let Some(new_location) = path.pop_front() {
                         map_messages.send(MapMessage::Move {
                             entity: entity,
-                            position: next_position,
+                            new_location,
                             absolute: false,
                             reply: None,
                         });

@@ -4,13 +4,17 @@ extern crate opalite;
 
 use std::collections::VecDeque;
 
+use opalite::cgmath::Vector3;
 use opalite::{
     AiComponent,
+    AiGoalDo,
     AiGoal,
+    CollisionLayer,
+    CollisionLayers,
     ModelKey,
     ModelType,
     OpalBuilder,
-    Position,
+    InitialPosition,
 };
 
 fn main() {
@@ -22,8 +26,10 @@ fn main() {
         .build();
 
     opal.world_mut().create_entity()
-        .with(Position { x: 0, y: 0, z: 0 })
+        .with(InitialPosition((0, 0, 0).into()))
+        .with(CollisionLayers::new([CollisionLayer::PLAYER].iter()))
         .with(AiComponent::new(
+            Box::new(|goal| AiGoalDo::Continue),
             Box::new(|goal| {
                 match goal {
                     &Some(ref goal) => {
@@ -38,15 +44,15 @@ fn main() {
                     },
                     &None => vec![
                         AiGoal::Move {
-                            start: Position::new(0, 0, 0),
-                            target: Position::new(15, 15, 0),
+                            start: Vector3::new(0, 0, 0),
+                            target: Vector3::new(15, 15, 0),
                             path: VecDeque::new(),
                         }
                     ]
                 }
             }),
             Box::new(|_| panic!("AI Error"))))
-        .with(ModelKey::new(ModelType::Quad));
+        .with(ModelKey::new(ModelType::Hex));
 
     let _ = opal.run();
 }

@@ -5,4 +5,5 @@
     shaders: {
         "main": Builtin("resources/shaders/main"),
     },
+    map_dimensions: (50, 50, 10),
 )

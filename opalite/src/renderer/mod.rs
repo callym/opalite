@@ -1,8 +1,10 @@
 use std::{ collections::HashMap, mem, ops::Drop, sync::{ Arc, Mutex } };
+use bincode::serialize;
+use cgmath::{ Matrix4, SquareMatrix, Vector3 };
 use failure::Error;
-use specs::{ Fetch, ReadStorage, System };
+use specs::{ Entities, Fetch, ReadStorage, System };
 use winit::Window;
-use crate::{ Config, Position, WindowClosed };
+use crate::{ Config, Map, Position, RLock, WindowClosed };
 
 use back;
 use back::Backend as B;
@@ -27,7 +29,10 @@ mod buffer;
 pub use self::buffer::{ Buffer, BufferData };
 
 mod model;
-pub use self::model::{ ModelKey, Model, ModelType, Vertex };
+pub use self::model::{ ModelKey, Model, ModelData, ModelType, Vertex };
+
+mod push_constant;
+pub use self::push_constant::PushConstant;
 
 mod shader;
 pub use self::shader::{ ShaderKey, Shader };
@@ -38,9 +43,9 @@ const COLOR_RANGE: i::SubresourceRange = i::SubresourceRange {
     layers: 0 .. 1,
 };
 
-#[derive(BufferData, Copy, Clone, Debug)]
+#[derive(PushConstant, Serialize, Copy, Clone, Debug)]
 pub struct Locals {
-    data: f32,
+    model: [[f32; 4]; 4],
 }
 
 #[derive(Fail, Debug)]
@@ -73,7 +78,6 @@ pub struct Renderer {
     viewport: hal::command::Viewport,
     swap_chain: <B as Backend>::Swapchain,
     //
-    locals_buffer: Buffer<Locals, B>,
     models: HashMap<ModelKey, Model>,
     //
     _instance: back::Instance,
@@ -137,7 +141,9 @@ impl Renderer {
 
         let pipeline_layout = {
             let device = device.lock().unwrap();
-            device.create_pipeline_layout(Some(&set_layout), &[])
+            device.create_pipeline_layout(Some(&set_layout), &[
+                (ShaderStageFlags::VERTEX, 0..Locals::SIZE),
+            ])
         };
 
         let render_pass = {
@@ -263,11 +269,6 @@ impl Renderer {
             Backbuffer::Framebuffer(fbo) => (Vec::new(), vec![fbo]),
         };
 
-        let mut locals_buffer = Buffer::<Locals, B>::new(device.clone(), 1, hal::buffer::Usage::UNIFORM, &memory_types)?;
-        locals_buffer.write(&[Locals {
-            data: 1.0,
-        }])?;
-
         let viewport = command::Viewport {
             rect: command::Rect {
                 x: 0,
@@ -300,7 +301,6 @@ impl Renderer {
             viewport,
             swap_chain,
             //
-            locals_buffer,
             models: HashMap::new(),
             //
             _instance: instance,
@@ -311,6 +311,7 @@ impl Renderer {
         let model = match key.ty() {
             ModelType::File(_) => unimplemented!(),
             ModelType::Quad => Model::quad([1.0, 0.0, 0.0], self.device.clone(), &self.memory_types[..]),
+            ModelType::Hex => Model::hex([1.0, 0.0, 0.0], self.device.clone(), &self.memory_types[..]),
         };
 
         self.models.insert(key.clone(), model);
@@ -325,9 +326,13 @@ impl Drop for Renderer {
 }
 
 impl<'a> System<'a> for Renderer {
-    type SystemData = (ReadStorage<'a, Position>, ReadStorage<'a, ModelKey>, Fetch<'a, WindowClosed>);
+    type SystemData = (
+        Entities<'a>,
+        ReadStorage<'a, Position>, ReadStorage<'a, ModelKey>, ReadStorage<'a, ModelData>,
+        Fetch<'a, RLock<Map>>, Fetch<'a, WindowClosed>,
+    );
 
-    fn run(&mut self, (positions, model_keys, window_closed): Self::SystemData) {
+    fn run(&mut self, (entities, positions, model_keys, model_datas, map, window_closed): Self::SystemData) {
         use specs::Join;
 
         if *window_closed == true {
@@ -349,7 +354,6 @@ impl<'a> System<'a> for Renderer {
             framebuffers,
             frame_fence,
             frame_semaphore,
-            locals_buffer,
             pipeline,
             pipeline_layout,
             queue_group,
@@ -358,17 +362,6 @@ impl<'a> System<'a> for Renderer {
             viewport,
             ..
         } = self;
-
-        let device = device.lock().unwrap();
-
-        device.write_descriptor_sets(vec![
-            pso::DescriptorSetWrite {
-                set: desc_set,
-                binding: 0,
-                array_offset: 0,
-                descriptors: Some(pso::Descriptor::Buffer(locals_buffer.buffer(), Some(0)..Some(<Locals as BufferData>::STRIDE))),
-            },
-        ]);
 
         command_pool.reset();
         let frame = swap_chain.acquire_frame(FrameSync::Semaphore(frame_semaphore));
@@ -387,9 +380,36 @@ impl<'a> System<'a> for Renderer {
             );
             encoder.bind_graphics_descriptor_sets(pipeline_layout, 0, Some(desc_set)); //TODO
 
-            for (position, model_key) in (&positions, &model_keys).join() {
+            let map = map.read().unwrap();
+
+            for (entity, _, model_key) in (&*entities, &positions, &model_keys).join() {
                 // this unwrap is safe because all the models are added at the top of the function.
                 let model = self.models.get(model_key).unwrap();
+
+                let locals = {
+                    let model_data = match model_datas.get(entity) {
+                        Some(data) => *data,
+                        None => Default::default(),
+                    };
+
+                    let position = match map.location(&entity) {
+                        Some(position) => position,
+                        None => continue,
+                    };
+
+                    let model_data = model_data.to_matrix(position);
+
+                    Locals {
+                        model: model_data.into(),
+                    }
+                };
+
+                encoder.push_graphics_constants(
+                    pipeline_layout,
+                    ShaderStageFlags::VERTEX | ShaderStageFlags::FRAGMENT,
+                    0,
+                    &locals.data()[..],
+                );
 
                 encoder.bind_vertex_buffers(pso::VertexBufferSet(vec![(model.vertex_buffer.buffer(), 0)]));
                 encoder.bind_index_buffer(hal::buffer::IndexBufferView {
@@ -409,8 +429,11 @@ impl<'a> System<'a> for Renderer {
         let mut queue = &mut queue_group.queues[0];
         queue.submit(submission, Some(frame_fence));
 
-        // TODO: replace with semaphore
-        device.wait_for_fence(&frame_fence, !0);
+        {
+            let device = device.lock().unwrap();
+            // TODO: replace with semaphore
+            device.wait_for_fence(&frame_fence, !0);
+        }
 
         swap_chain.present(&mut queue, &[]);
     }

@@ -14,6 +14,7 @@ pub struct Config {
     pub title: String,
     pub window_dimensions: (u32, u32),
     pub shaders: HashMap<ShaderKey, ShaderLocation>,
+    pub map_dimensions: (i32, i32, i32),
 }
 
 impl Config {
@@ -28,14 +29,18 @@ impl Config {
             self.title = title;
         }
 
-        if let Some(dimensions) = other.window_dimensions {
-            self.window_dimensions = dimensions;
+        if let Some(window_dimensions) = other.window_dimensions {
+            self.window_dimensions = window_dimensions;
         }
 
         if let Some(shaders) = other.shaders {
             for (key, value) in shaders.into_iter() {
                 self.shaders.insert(key, ShaderLocation::Custom(value));
             }
+        }
+
+        if let Some(map_dimensions) = other.map_dimensions {
+            self.map_dimensions = map_dimensions;
         }
 
         self
@@ -47,6 +52,7 @@ pub struct ConfigBuilder {
     pub title: Option<String>,
     pub window_dimensions: Option<(u32, u32)>,
     pub shaders: Option<HashMap<ShaderKey, PathBuf>>,
+    pub map_dimensions: Option<(i32, i32, i32)>,
 }
 
 impl ConfigBuilder {
