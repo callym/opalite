@@ -2,6 +2,7 @@ use std::cmp::PartialEq;
 use cgmath::Vector3;
 use specs::{ DispatcherBuilder, Dispatcher, World };
 use winit::{ EventsLoop, WindowBuilder, Window };
+use super::{ DefaultSystems, Opal, WindowClosed };
 use crate::{
     AiComponent,
     AiSystem,
@@ -21,46 +22,6 @@ use crate::{
     Shard,
 };
 
-pub struct WindowClosed(bool);
-
-impl PartialEq<bool> for WindowClosed {
-    fn eq(&self, other: &bool) -> bool {
-        &self.0 == other
-    }
-}
-
-pub struct DefaultSystems {
-    ai_system: Option<AiSystem>,
-    map_system: Option<MapSystem>,
-    map_system_sender: Option<MessageSender<MapMessage>>,
-    map_reader: Option<RLock<Map>>,
-}
-
-impl DefaultSystems {
-    pub fn new(config: &Config) -> Self {
-        let map_dimensions = config.map_dimensions.into();
-        let map_system = MapSystem::new(map_dimensions);
-        let map_system_sender = map_system.sender();
-        let map_reader = map_system.map();
-
-        Self {
-            ai_system: Some(AiSystem::new()),
-            map_system: Some(map_system),
-            map_system_sender: Some(map_system_sender),
-            map_reader: Some(map_reader),
-        }
-    }
-}
-
-pub struct Opal<'a, 'b> {
-    config: Config,
-    dispatcher: Dispatcher<'a, 'b>,
-    events_loop: EventsLoop,
-    #[allow(dead_code)]
-    window: Window,
-    world: World,
-}
-
 #[allow(non_snake_case)]
 mod BuilderState {
     pub struct New;
@@ -69,6 +30,8 @@ mod BuilderState {
     pub struct DispatcherThreadLocal;
     pub struct World;
 }
+
+pub struct OpalBuilder;
 
 pub struct PartialOpalBuilder<'a, 'b, S> {
     config: Config,
@@ -80,8 +43,6 @@ pub struct PartialOpalBuilder<'a, 'b, S> {
     #[allow(dead_code)]
     state: S,
 }
-
-pub struct OpalBuilder;
 
 impl OpalBuilder {
     pub fn new<'a, 'b>() -> PartialOpalBuilder<'a, 'b, BuilderState::New> {
@@ -167,7 +128,6 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::DispatcherEnd> {
 
         let dispatcher = self.dispatcher.take()
             .unwrap()
-            .add_barrier()
             .add_thread_local(renderer);
 
         PartialOpalBuilder {
@@ -222,45 +182,5 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::World> {
         let world = world.unwrap();
 
         Opal { config, dispatcher, events_loop, window, world }
-    }
-}
-
-impl<'a, 'b> Opal<'a, 'b> {
-    pub fn config(&self) -> &Config {
-        &self.config
-    }
-
-    pub fn world(&self) -> &World {
-        &self.world
-    }
-
-    pub fn world_mut(&mut self) -> &mut World {
-        &mut self.world
-    }
-
-    pub fn run(&mut self) -> Result<(), ()> {
-        use winit::{ Event, WindowEvent };
-
-        let Opal { events_loop, dispatcher, world, .. } = self;
-
-        while *world.read_resource::<WindowClosed>() == false {
-            events_loop.poll_events(|event| {
-                if let Event::WindowEvent { event, .. } = event {
-                    match event {
-                        WindowEvent::Closed => {
-                            let mut window_closed = world.write_resource::<WindowClosed>();
-                            *window_closed = WindowClosed(true);
-                        },
-                        _ => (),
-                    }
-                }
-            });
-
-            dispatcher.dispatch(&mut world.res);
-
-            //::std::thread::sleep(::std::time::Duration::from_millis(250));
-        }
-
-        Ok(())
     }
 }
