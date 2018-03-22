@@ -115,15 +115,15 @@ impl<'a> System<'a> for AiSystem {
                 Some(Move { target, path, .. }) => {
                     if path.is_empty() {
                         let mut current_step = *position;
-                        while (current_step.x, current_step.y) != (target.x, target.y) {
+                        while (current_step.x, current_step.z) != (target.x, target.z) {
                             let next_step = if current_step.x < target.x {
                                 Vector3::new(1, 0, 0)
                             } else if current_step.x > target.x {
                                 Vector3::new(-1, 0, 0)
-                            } else if current_step.y < target.y {
-                                Vector3::new(0, 1, 0)
-                            } else if current_step.y > target.y {
-                                Vector3::new(0, -1, 0)
+                            } else if current_step.z < target.z {
+                                Vector3::new(0, 0, 1)
+                            } else if current_step.z > target.z {
+                                Vector3::new(0, 0, -1)
                             } else {
                                 Vector3::new(0, 0, 0)
                             };

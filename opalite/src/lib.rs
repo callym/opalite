@@ -36,6 +36,8 @@ mod opal;
 pub mod renderer;
 mod system;
 
+pub use back::Backend;
+
 pub use ai::{
     AiComponent,
     AiGoalDo,
@@ -68,11 +70,17 @@ pub use opal::{
 };
 
 pub use renderer::{
+    Buffer,
+    BufferData,
+    Camera,
     Renderer,
+    Model,
     ModelData,
     ModelKey,
     ModelType,
+    ProceduralModel,
     ShaderKey,
+    Vertex,
 };
 
 pub use system::{

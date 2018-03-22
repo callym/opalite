@@ -188,8 +188,8 @@ impl<'a> System<'a> for MapSystem {
                     let new_location = if absolute { new_location } else { location + new_location };
 
                     if  new_location.x < 0 || new_location.x > map.width ||
-                        new_location.y < 0 || new_location.y > map.depth ||
-                        new_location.z < 0 || new_location.z > map.height {
+                        new_location.y < 0 || new_location.y > map.height ||
+                        new_location.z < 0 || new_location.z > map.depth {
                             reply.map(|reply| reply.send(false).unwrap());
                             continue;
                     }

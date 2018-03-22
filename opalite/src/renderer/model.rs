@@ -1,9 +1,15 @@
-use std::{ self, path::PathBuf, sync::{ Arc, Mutex } };
+use std::{
+    self,
+    cmp::{ Eq, PartialEq },
+    hash::{ Hash, Hasher },
+    path::PathBuf,
+    sync::{ Arc, Mutex },
+};
 use back::Backend as B;
 use hal::{ self, Backend };
 use cgmath::{ prelude::*, Matrix4, Vector3 };
 use uuid::Uuid;
-use crate::renderer::Buffer;
+use crate::{ renderer::Buffer, RLock };
 
 #[derive(BufferData, Copy, Clone, Debug)]
 pub struct Vertex {
@@ -22,6 +28,21 @@ impl Vertex {
 
     pub fn z(&self) -> f32 {
         self.position[2]
+    }
+
+    pub fn set_color<P: Into<[f32; 3]>>(&mut self, val: P) {
+        self.color = val.into();
+    }
+
+    pub fn set_position<P: Into<[f32; 3]>>(&mut self, val: P) {
+        self.position = val.into();
+    }
+
+    pub fn change_position<P: Into<[f32; 3]>>(&mut self, val: P) {
+        let val: [_; 3] = val.into();
+        self.position[0] += val[0];
+        self.position[1] += val[1];
+        self.position[2] += val[2];
     }
 
     pub fn set_x(&mut self, val: f32) {
@@ -46,7 +67,7 @@ impl Default for Vertex {
     }
 }
 
-#[derive(Component, Hash, PartialEq, Eq, Clone)]
+#[derive(Component, Clone)]
 pub struct ModelKey(ModelType, Uuid);
 
 impl ModelKey {
@@ -54,10 +75,32 @@ impl ModelKey {
         ModelKey(model_type, Uuid::new_v4())
     }
 
+    pub fn id(&self) -> Uuid {
+        self.1
+    }
+
     pub fn ty(&self) -> &ModelType {
         &self.0
     }
+
+    pub fn ty_mut(&mut self) -> &mut ModelType {
+        &mut self.0
+    }
 }
+
+impl Hash for ModelKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id().hash(state);
+    }
+}
+
+impl PartialEq for ModelKey {
+    fn eq(&self, other: &ModelKey) -> bool {
+        self.id() == other.id()
+    }
+}
+
+impl Eq for ModelKey { }
 
 #[derive(Component, PartialEq, Clone, Copy)]
 pub struct ModelData {
@@ -71,7 +114,7 @@ impl Default for ModelData {
         ModelData {
             ignore_position: false,
             translate: Vector3::new(0.0, 0.0, 0.0),
-            scale: Vector3::new(0.01, 0.01, 0.01),
+            scale: Vector3::new(0.1, 0.1, 0.1),
         }
     }
 }
@@ -92,10 +135,18 @@ impl ModelData {
     }
 }
 
-#[derive(Hash, PartialEq, Eq, Clone)]
+pub trait ProceduralModel {
+    fn load(&mut self, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Model>;
+    fn needs_reload(&mut self) -> bool {
+        false
+    }
+}
+
+#[derive(Clone)]
 pub enum ModelType {
     Quad,
     Hex,
+    Procedural(Arc<Mutex<ProceduralModel + Send + Sync>>),
     File(PathBuf),
 }
 
@@ -105,7 +156,7 @@ pub struct Model {
 }
 
 impl Model {
-    pub(crate) fn quad(color: [f32; 3], device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> Self {
+    pub(crate) fn quad(color: [f32; 3], device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Self> {
         let vertices = make_quad(color).to_vec();
         let mut vertex_buffer = Buffer::<Vertex, B>::new(device.clone(), vertices.len() as u64, hal::buffer::Usage::VERTEX, &memory_types).unwrap();
         vertex_buffer.write(&vertices[..]).unwrap();
@@ -114,13 +165,13 @@ impl Model {
         let mut index_buffer = Buffer::<u32, B>::new(device.clone(), indices.len() as u64, hal::buffer::Usage::INDEX, &memory_types).unwrap();
         index_buffer.write(&indices[..]).unwrap();
 
-        Self {
+        RLock::new(Self {
             vertex_buffer,
             index_buffer,
-        }
+        })
     }
 
-    pub(crate) fn hex(color: [f32; 3], device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> Self {
+    pub(crate) fn hex(color: [f32; 3], device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Self> {
         let (vertices, indices) = make_hex(color);
 
         let mut vertex_buffer = Buffer::<Vertex, B>::new(device.clone(), vertices.len() as u64, hal::buffer::Usage::VERTEX, &memory_types).unwrap();
@@ -129,24 +180,24 @@ impl Model {
         let mut index_buffer = Buffer::<u32, B>::new(device.clone(), indices.len() as u64, hal::buffer::Usage::INDEX, &memory_types).unwrap();
         index_buffer.write(&indices[..]).unwrap();
 
-        Self {
+        RLock::new(Self {
             vertex_buffer,
             index_buffer,
-        }
+        })
     }
 }
 
-fn make_quad(color: [f32; 3]) -> [Vertex; 6] {[
-  Vertex { position: [ -0.5, 0.5, 0.0 ], color, .. Default::default() },
-  Vertex { position: [  0.5, 0.5, 0.0 ], color, .. Default::default() },
-  Vertex { position: [  0.5,-0.5, 0.0 ], color, .. Default::default() },
+pub fn make_quad(color: [f32; 3]) -> [Vertex; 6] {[
+  Vertex { position: [ -0.5, 0.0, 0.5 ], color, .. Default::default() },
+  Vertex { position: [  0.5, 0.0, 0.5 ], color, .. Default::default() },
+  Vertex { position: [  0.5, 0.0,-0.5 ], color, .. Default::default() },
 
-  Vertex { position: [ -0.5, 0.5, 0.0 ], color, .. Default::default() },
-  Vertex { position: [  0.5,-0.5, 0.0 ], color, .. Default::default() },
-  Vertex { position: [ -0.5,-0.5, 0.0 ], color, .. Default::default() },
+  Vertex { position: [ -0.5, 0.5, 0.5 ], color, .. Default::default() },
+  Vertex { position: [  0.5, 0.0,-0.5 ], color, .. Default::default() },
+  Vertex { position: [ -0.5, 0.0,-0.5 ], color, .. Default::default() },
 ]}
 
-fn make_hex(color: [f32; 3]) -> ([Vertex; 7], [u32; 18]) {
+pub fn make_hex(color: [f32; 3]) -> ([Vertex; 7], [u32; 18]) {
     let start_angle = 0.5;
 
     let offset = |corner| {
@@ -160,13 +211,13 @@ fn make_hex(color: [f32; 3]) -> ([Vertex; 7], [u32; 18]) {
 
         if i == 0 {
             v.set_x(0.0);
-            v.set_y(0.0);
+            v.set_z(0.0);
             continue;
         }
 
         let (x, y) = offset(i as f32);
         v.set_x(x);
-        v.set_y(y);
+        v.set_z(y);
     }
 
     let indices = [

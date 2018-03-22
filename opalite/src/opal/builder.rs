@@ -1,11 +1,12 @@
 use std::cmp::PartialEq;
-use cgmath::Vector3;
+use cgmath::{ Deg, Vector3 };
 use specs::{ DispatcherBuilder, Dispatcher, World };
 use winit::{ EventsLoop, WindowBuilder, Window };
 use super::{ DefaultSystems, Opal, WindowClosed };
 use crate::{
     AiComponent,
     AiSystem,
+    Camera,
     CollisionLayers,
     Config,
     ConfigBuilder,
@@ -158,6 +159,13 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::DispatcherThreadLocal> {
             world.add_resource(self.default_systems.map_system_sender.take().unwrap());
             world.add_resource(self.config.clone());
             world.add_resource(WindowClosed(false));
+            world.add_resource(Camera {
+                position: Vector3::new(1.0, 2.5, 5.0),
+                direction: Vector3::new(0.0, -0.5, -1.0),
+                fovy: Deg(45.0),
+                near: 0.1,
+                far: 100.0,
+            });
 
             world
         };

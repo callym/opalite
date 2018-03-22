@@ -2,7 +2,7 @@ use std::{ collections::HashMap, mem, ops::Drop, sync::{ Arc, Mutex } };
 use bincode::serialize;
 use cgmath::{ Matrix4, SquareMatrix, Vector3 };
 use failure::Error;
-use specs::{ Entities, Fetch, ReadStorage, System };
+use specs::{ Entities, Fetch, ReadStorage, System, WriteStorage };
 use winit::Window;
 use crate::{ Config, Map, Position, RLock, WindowClosed };
 
@@ -10,7 +10,7 @@ use back;
 use back::Backend as B;
 
 use hal;
-use hal::{ command, device as d, format as f, image as i, pass, pso, pool };
+use hal::{ command, device as d, format as f, image as i, memory as m, pass, pso, pool };
 use hal::{ Backend, Device, Instance, PhysicalDevice, Surface, Swapchain };
 use hal::{
     Adapter,
@@ -28,8 +28,11 @@ use hal::queue::Submission;
 mod buffer;
 pub use self::buffer::{ Buffer, BufferData };
 
-mod model;
-pub use self::model::{ ModelKey, Model, ModelData, ModelType, Vertex };
+mod camera;
+pub use self::camera::Camera;
+
+pub mod model;
+pub use self::model::{ ModelKey, Model, ModelData, ModelType, ProceduralModel, Vertex };
 
 mod push_constant;
 pub use self::push_constant::PushConstant;
@@ -38,14 +41,26 @@ mod shader;
 pub use self::shader::{ ShaderKey, Shader };
 
 const COLOR_RANGE: i::SubresourceRange = i::SubresourceRange {
+    aspects: f::Aspects::DEPTH,
+    levels: 0 .. 1,
+    layers: 0 .. 1,
+};
+
+const DEPTH_RANGE: i::SubresourceRange = i::SubresourceRange {
     aspects: f::Aspects::COLOR,
     levels: 0 .. 1,
     layers: 0 .. 1,
 };
 
 #[derive(PushConstant, Serialize, Copy, Clone, Debug)]
-pub struct Locals {
+pub struct ModelLocals {
     model: [[f32; 4]; 4],
+}
+
+#[derive(BufferData, Serialize, Copy, Clone, Debug)]
+#[uniform]
+pub struct Locals {
+    proj_view: [[f32; 4]; 4],
 }
 
 #[derive(Fail, Debug)]
@@ -66,6 +81,7 @@ pub struct Renderer {
     command_pool: hal::CommandPool<B, hal::Graphics>,
     desc_set: <B as Backend>::DescriptorSet,
     device: Arc<Mutex<back::Device>>,
+    dimensions: (u32, u32),
     framebuffers: Vec<<B as Backend>::Framebuffer>,
     frame_fence: <B as Backend>::Fence,
     frame_semaphore: <B as Backend>::Semaphore,
@@ -78,7 +94,8 @@ pub struct Renderer {
     viewport: hal::command::Viewport,
     swap_chain: <B as Backend>::Swapchain,
     //
-    models: HashMap<ModelKey, Model>,
+    models: HashMap<ModelKey, RLock<Model>>,
+    locals: Buffer<Locals, B>,
     //
     _instance: back::Instance,
 }
@@ -108,6 +125,8 @@ impl Renderer {
         let surface_format = surface.capabilities_and_formats(&adapter.physical_device).1
             .map_or(Some(f::Format::Rgba8Srgb), |f| f.into_iter().find(|f| f.base_format().1 == ChannelType::Srgb))
             .ok_or(RenderError::NoSurfaceFormat)?;
+        let depth_format = f::Format::D32Float;
+
         let memory_types = adapter.physical_device.memory_properties().memory_types;
         let limits = adapter.physical_device.limits();
 
@@ -120,7 +139,9 @@ impl Renderer {
         };
 
         let swap_config = SwapchainConfig::new()
-            .with_color(surface_format);
+            .with_color(surface_format)
+            .with_depth_stencil(depth_format);
+
         let (swap_chain, backbuffer) = {
             let device = device.lock().unwrap();
             device.create_swapchain(&mut surface, swap_config)
@@ -142,7 +163,7 @@ impl Renderer {
         let pipeline_layout = {
             let device = device.lock().unwrap();
             device.create_pipeline_layout(Some(&set_layout), &[
-                (ShaderStageFlags::VERTEX, 0..Locals::SIZE),
+                (ShaderStageFlags::VERTEX, 0..ModelLocals::SIZE),
             ])
         };
 
@@ -156,9 +177,16 @@ impl Renderer {
                 layouts: i::ImageLayout::Undefined .. i::ImageLayout::Present,
             };
 
+            let depth_attachment = pass::Attachment {
+                format: Some(depth_format),
+                ops: pass::AttachmentOps::new(pass::AttachmentLoadOp::Clear, pass::AttachmentStoreOp::DontCare),
+                stencil_ops: pass::AttachmentOps::DONT_CARE,
+                layouts: i::ImageLayout::Undefined .. i::ImageLayout::DepthStencilAttachmentOptimal,
+            };
+
             let subpass = pass::SubpassDesc {
                 colors: &[(0, i::ImageLayout::ColorAttachmentOptimal)],
-                depth_stencil: None,
+                depth_stencil: Some(&(1, i::ImageLayout::DepthStencilAttachmentOptimal)),
                 inputs: &[],
                 preserves: &[],
             };
@@ -169,7 +197,7 @@ impl Renderer {
                 accesses: i::Access::empty() .. (i::Access::COLOR_ATTACHMENT_READ | i::Access::COLOR_ATTACHMENT_WRITE),
             };
 
-            device.create_render_pass(&[attachment], &[subpass], &[dependency])
+            device.create_render_pass(&[attachment, depth_attachment], &[subpass], &[dependency])
         };
 
         let pipeline = {
@@ -214,6 +242,15 @@ impl Renderer {
                 );
                 pipeline_desc.blender.targets.push(pso::ColorBlendDesc(pso::ColorMask::ALL, pso::BlendState::ALPHA));
 
+                pipeline_desc.depth_stencil = Some(pso::DepthStencilDesc {
+                    depth: pso::DepthTest::On {
+                        fun: pso::Comparison::Less,
+                        write: true,
+                    },
+                    depth_bounds: false,
+                    .. Default::default()
+                });
+
                 pipeline_desc.vertex_buffers.push(pso::VertexBufferDesc {
                     stride: mem::size_of::<Vertex>() as u32,
                     rate: 0,
@@ -246,6 +283,23 @@ impl Renderer {
 
         let desc_set = desc_pool.allocate_set(&set_layout);
 
+        let depth_view = {
+            let device = device.lock().unwrap();
+            let depth_image = device.create_image(i::Kind::D2(width as u16, height as u16, i::AaMode::Single), 1, depth_format, i::Usage::DEPTH_STENCIL_ATTACHMENT)?;
+            let depth_memory_requirements = device.get_image_requirements(&depth_image);
+            let memory_type = memory_types.iter().enumerate()
+                .position(|(id, mem_type)| {
+                    depth_memory_requirements.type_mask & (1 << id) != 0 &&
+                    mem_type.properties.contains(m::Properties::DEVICE_LOCAL)
+                })
+                .unwrap()
+                .into();
+
+            let depth_memory = device.allocate_memory(memory_type, depth_memory_requirements.size)?;
+            let depth_image = device.bind_image_memory(&depth_memory, 0, depth_image)?;
+            device.create_image_view(&depth_image, depth_format, f::Swizzle::NO, DEPTH_RANGE.clone())?
+        };
+
         let (_frame_images, framebuffers) = match backbuffer {
             Backbuffer::Images(images) => {
                 let device = device.lock().unwrap();
@@ -253,15 +307,13 @@ impl Renderer {
                 let extent = d::Extent { width, height, depth: 1 };
                 let pairs = images.into_iter()
                     .map(|image| {
-                        let rtv = device.create_image_view(&image, surface_format, Swizzle::NO, COLOR_RANGE.clone());
-                        match rtv {
-                            Ok(rtv) => Ok((image, rtv)),
-                            Err(err) => Err(err),
-                        }
+                        println!("{:?}", image);
+                        let rtv = device.create_image_view(&image, surface_format, Swizzle::NO, COLOR_RANGE.clone())?;
+                        Ok((image, rtv, &depth_view))
                     })
-                    .collect::<Result<Vec<_>, _>>()?;
+                    .collect::<Result<Vec<_>, Error>>()?;
                 let fbos = pairs.iter()
-                    .map(|&(_, ref rtv)| device.create_framebuffer(&render_pass, Some(rtv), extent))
+                    .map(|&(_, ref rtv, ref dtv)| device.create_framebuffer(&render_pass, vec![rtv, dtv], extent))
                     .collect::<Result<Vec<_>, _>>().map_err(|_| RenderError::FramebufferCreation)?;
 
                 (pairs, fbos)
@@ -279,6 +331,15 @@ impl Renderer {
             depth: 0.0 .. 1.0,
         };
 
+        let mut locals = Buffer::<Locals, B>::new(device.clone(), 1, hal::buffer::Usage::UNIFORM, &memory_types).unwrap();
+
+        {
+            let device = device.lock().unwrap();
+            device.write_descriptor_sets(vec![
+                locals.descriptor_set(0, 0, &desc_set),
+            ]);
+        }
+
         let (frame_semaphore, frame_fence) = {
             let device = device.lock().unwrap();
             // TODO: remove fence
@@ -289,6 +350,7 @@ impl Renderer {
             command_pool,
             desc_set,
             device,
+            dimensions: (width, height),
             framebuffers,
             frame_fence,
             frame_semaphore,
@@ -302,20 +364,25 @@ impl Renderer {
             swap_chain,
             //
             models: HashMap::new(),
+            locals,
             //
             _instance: instance,
         })
     }
 
-    pub fn load_model(&mut self, key: &ModelKey) -> &Model {
-        let model = match key.ty() {
+    pub fn load_model(&mut self, key: &mut ModelKey) -> &RLock<Model> {
+        let model = match key.ty_mut() {
             ModelType::File(_) => unimplemented!(),
+            ModelType::Procedural(procedural) => {
+                let mut procedural = procedural.lock().unwrap();
+                procedural.load(self.device.clone(), &self.memory_types[..])
+            },
             ModelType::Quad => Model::quad([1.0, 0.0, 0.0], self.device.clone(), &self.memory_types[..]),
             ModelType::Hex => Model::hex([1.0, 0.0, 0.0], self.device.clone(), &self.memory_types[..]),
         };
 
-        self.models.insert(key.clone(), model);
-        self.models.get(&key).unwrap()
+        self.models.entry(key.clone())
+            .or_insert(model)
     }
 }
 
@@ -328,11 +395,12 @@ impl Drop for Renderer {
 impl<'a> System<'a> for Renderer {
     type SystemData = (
         Entities<'a>,
-        ReadStorage<'a, Position>, ReadStorage<'a, ModelKey>, ReadStorage<'a, ModelData>,
+        WriteStorage<'a, ModelKey>, ReadStorage<'a, ModelData>,
+        Fetch<'a, Camera>,
         Fetch<'a, RLock<Map>>, Fetch<'a, WindowClosed>,
     );
 
-    fn run(&mut self, (entities, positions, model_keys, model_datas, map, window_closed): Self::SystemData) {
+    fn run(&mut self, (entities, mut model_keys, model_datas, camera, map, window_closed): Self::SystemData) {
         use specs::Join;
 
         if *window_closed == true {
@@ -340,20 +408,34 @@ impl<'a> System<'a> for Renderer {
             return;
         }
 
-        for model_key in model_keys.join() {
-            match self.models.get(model_key) {
+        for model_key in (&mut model_keys).join() {
+            match self.models.get_mut(model_key) {
                 None => { self.load_model(model_key); },
-                _ => ()
+                Some(key) => {
+                    let reload = match model_key.ty_mut() {
+                        ModelType::Procedural(procedural) => {
+                            let mut procedural = procedural.lock().unwrap();
+                            procedural.needs_reload()
+                        },
+                        _ => false,
+                    };
+
+                    if reload {
+                        self.load_model(model_key);
+                    }
+                }
             };
         };
 
         let Self {
             desc_set,
             device,
+            dimensions,
             command_pool,
             framebuffers,
             frame_fence,
             frame_semaphore,
+            locals,
             pipeline,
             pipeline_layout,
             queue_group,
@@ -362,6 +444,16 @@ impl<'a> System<'a> for Renderer {
             viewport,
             ..
         } = self;
+
+        let ratio = {
+            let width = dimensions.0 as f32;
+            let height = dimensions.1 as f32;
+            width / height
+        };
+
+        locals.write(&[Locals {
+            proj_view: camera.matrix(ratio).into(),
+        }]);
 
         command_pool.reset();
         let frame = swap_chain.acquire_frame(FrameSync::Semaphore(frame_semaphore));
@@ -376,15 +468,19 @@ impl<'a> System<'a> for Renderer {
                 &render_pass,
                 &framebuffers[frame.id()],
                 viewport.rect,
-                &[command::ClearValue::Color(command::ClearColor::Float([0.8, 0.8, 0.8, 1.0]))],
+                &[
+                    command::ClearValue::Color(command::ClearColor::Float([0.8, 0.8, 0.8, 1.0])),
+                    command::ClearValue::DepthStencil(command::ClearDepthStencil(1.0, 0)),
+                ],
             );
             encoder.bind_graphics_descriptor_sets(pipeline_layout, 0, Some(desc_set)); //TODO
 
             let map = map.read().unwrap();
 
-            for (entity, _, model_key) in (&*entities, &positions, &model_keys).join() {
+            for (entity, model_key) in (&*entities, &model_keys).join() {
                 // this unwrap is safe because all the models are added at the top of the function.
                 let model = self.models.get(model_key).unwrap();
+                let model = model.read().unwrap();
 
                 let locals = {
                     let model_data = match model_datas.get(entity) {
@@ -393,13 +489,13 @@ impl<'a> System<'a> for Renderer {
                     };
 
                     let position = match map.location(&entity) {
-                        Some(position) => position,
-                        None => continue,
+                        Some(position) => *position,
+                        None => Vector3::new(0, 0, 0),
                     };
 
-                    let model_data = model_data.to_matrix(position);
+                    let model_data = model_data.to_matrix(&position);
 
-                    Locals {
+                    ModelLocals {
                         model: model_data.into(),
                     }
                 };

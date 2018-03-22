@@ -64,6 +64,15 @@ impl<D: BufferData, B: Backend> Buffer<D, B> {
         Ok(())
     }
 
+    pub fn descriptor_set<'a>(&'a self, binding: u32, array_offset: usize, descriptor_set: &'a B::DescriptorSet) -> pso::DescriptorSetWrite<'a, B, Option<pso::Descriptor<'a, B>>> {
+        pso::DescriptorSetWrite {
+            set: descriptor_set,
+            binding,
+            array_offset,
+            descriptors: Some(pso::Descriptor::Buffer(self.buffer(), Some(0)..Some(D::STRIDE))),
+        }
+    }
+
     pub fn buffer(&self) -> &B::Buffer {
         &self.buffer.as_ref().unwrap()
     }
