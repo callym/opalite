@@ -27,12 +27,12 @@ rev = "a7d08e6"
 # baae50e - Jan 2nd (before the mapping functions were temporarily removed)
 [dependencies.gfx-hal]
 git = "https://github.com/gfx-rs/gfx"
-rev = "1eb53f7"
+rev = "1f880b8"
 
 [dependencies.gfx-backend-dx12]
 git = "https://github.com/gfx-rs/gfx"
-rev = "1eb53f7"
+rev = "1f880b8"
 
 [dependencies.gfx-backend-vulkan]
 git = "https://github.com/gfx-rs/gfx"
-rev = "1eb53f7"
+rev = "1f880b8"
