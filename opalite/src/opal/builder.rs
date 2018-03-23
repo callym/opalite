@@ -11,6 +11,8 @@ use crate::{
     Config,
     ConfigBuilder,
     InitialPosition,
+    InputEventHandler,
+    InputEventType,
     MapMessage,
     MessageSender,
     ModelData,
@@ -84,6 +86,7 @@ impl<'a, 'b, S> PartialOpalBuilder<'a, 'b, S> {
 impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::New> {
     pub fn add_dispatcher_start(mut self) -> PartialOpalBuilder<'a, 'b, BuilderState::DispatcherStart> {
         let dispatcher = DispatcherBuilder::new()
+            .add(self.default_systems.picker_system.take().unwrap(), "PickerSystem", &[])
             .add(self.default_systems.ai_system.take().unwrap(), "AiSystem", &[]);
 
         PartialOpalBuilder {
@@ -183,12 +186,15 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::DispatcherThreadLocal> {
 }
 
 impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::World> {
-    pub fn build(self) -> Opal<'a, 'b> {
-        let PartialOpalBuilder { config, dispatcher, events_loop, window, world, .. } = self;
+    pub fn build(mut self) -> Opal<'a, 'b> {
+        let PartialOpalBuilder { config, mut default_systems, dispatcher, events_loop, window, world, .. } = self;
         let dispatcher = dispatcher.unwrap().build();
         let window = window.unwrap();
         let world = world.unwrap();
 
-        Opal { config, dispatcher, events_loop, window, world }
+        let mut input_event_handler = InputEventHandler::new();
+        input_event_handler.register(InputEventType::MouseClickedWithCoordinates, default_systems.picker_system_sender.take().unwrap());
+
+        Opal { config, dispatcher, events_loop, input_event_handler, window, world }
     }
 }

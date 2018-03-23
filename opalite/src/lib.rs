@@ -13,7 +13,7 @@
 #[macro_use] extern crate opalite_macro;
 
 pub extern crate bincode;
-pub extern crate cgmath;
+#[macro_use] pub extern crate cgmath;
 #[macro_use] extern crate failure;
 #[macro_use] extern crate failure_derive;
 extern crate futures;
@@ -30,9 +30,11 @@ extern crate winit;
 
 mod ai;
 mod config;
+mod input_events;
 mod map;
 mod mutex_ext;
 mod opal;
+mod picker;
 pub mod renderer;
 mod system;
 
@@ -51,6 +53,12 @@ pub use config::{
     ShaderLocation,
 };
 
+pub use input_events::{
+    InputEvent,
+    InputEventType,
+    InputEventHandler,
+};
+
 pub use map::{
     CollisionLayer,
     CollisionLayers,
@@ -67,6 +75,10 @@ pub use opal::{
     OpalBuilder,
     Opal,
     WindowClosed,
+};
+
+pub use picker::{
+    PickerSystem,
 };
 
 pub use renderer::{

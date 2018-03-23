@@ -114,7 +114,7 @@ impl Default for ModelData {
         ModelData {
             ignore_position: false,
             translate: Vector3::new(0.0, 0.0, 0.0),
-            scale: Vector3::new(0.1, 0.1, 0.1),
+            scale: Vector3::new(1.0, 1.0, 1.0),
         }
     }
 }
@@ -146,6 +146,7 @@ pub trait ProceduralModel {
 pub enum ModelType {
     Quad,
     Hex,
+    Sphere,
     Procedural(Arc<Mutex<ProceduralModel + Send + Sync>>),
     File(PathBuf),
 }
@@ -173,6 +174,21 @@ impl Model {
 
     pub(crate) fn hex(color: [f32; 3], device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Self> {
         let (vertices, indices) = make_hex(color);
+
+        let mut vertex_buffer = Buffer::<Vertex, B>::new(device.clone(), vertices.len() as u64, hal::buffer::Usage::VERTEX, &memory_types).unwrap();
+        vertex_buffer.write(&vertices[..]).unwrap();
+
+        let mut index_buffer = Buffer::<u32, B>::new(device.clone(), indices.len() as u64, hal::buffer::Usage::INDEX, &memory_types).unwrap();
+        index_buffer.write(&indices[..]).unwrap();
+
+        RLock::new(Self {
+            vertex_buffer,
+            index_buffer,
+        })
+    }
+
+    pub(crate) fn sphere(color: [f32; 3], device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Self> {
+        let (vertices, indices) = make_sphere(color);
 
         let mut vertex_buffer = Buffer::<Vertex, B>::new(device.clone(), vertices.len() as u64, hal::buffer::Usage::VERTEX, &memory_types).unwrap();
         vertex_buffer.write(&vertices[..]).unwrap();
@@ -230,4 +246,30 @@ pub fn make_hex(color: [f32; 3]) -> ([Vertex; 7], [u32; 18]) {
     ];
 
     (arr, indices)
+}
+
+pub fn make_sphere(color: [f32; 3]) -> (Vec<Vertex>, Vec<u32>) {
+    let X = 0.525731112119133606;
+    let Z = 0.850650808352039932;
+    let N = 0.0;
+
+    let icosahedron = vec![
+        [-X, N, Z], [X, N, Z], [-X, N,-Z], [X, N,-Z],
+        [N, Z, X], [N, Z,-X], [N,-Z, X], [N,-Z,-X],
+        [Z, X, N], [-Z, X, N], [Z,-X, N], [-Z,-X, N],
+    ];
+
+    let indices = vec![
+        0, 4, 1, 0, 9, 4, 9, 5, 4, 4, 5, 8, 4, 8, 1,
+        8, 10, 1, 8, 3, 10, 5, 3, 8, 5, 2, 3, 2, 7, 3,
+        7, 10, 3, 7, 6, 10, 7, 11, 6, 11, 0, 6, 0, 1, 6,
+        6, 1, 10, 9, 0, 11, 9, 11, 2, 9, 2, 5, 7, 2, 11,
+    ];
+
+    let vertices = icosahedron.iter().map(|v| Vertex {
+        position: *v,
+        color,
+    }).collect();
+
+    (vertices, indices)
 }

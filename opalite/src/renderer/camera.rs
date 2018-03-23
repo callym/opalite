@@ -10,32 +10,34 @@ pub struct Camera {
 }
 
 impl Camera {
-    pub fn matrix(&self, aspect: f32) -> Matrix4<f32> {
+    pub fn view(&self) -> Matrix4<f32> {
         let position = Point3::new(self.position.x, self.position.y, self.position.z);
         let direction = {
             let direction = self.position + self.direction;
             Point3::new(direction.x, direction.y, direction.z)
         };
 
-        let view = Matrix4::look_at(
+        Matrix4::look_at(
             position,
             direction,
             Vector3::new(0.0, 1.0, 0.0)
+        )
+    }
+
+    pub fn projection(&self, aspect: f32) -> Matrix4<f32> {
+        let proj = cgmath::perspective(self.fovy, aspect, self.near, self.far);
+        // https://matthewwellings.com/blog/the-new-vulkan-coordinate-system/
+        let vulkan_correction = Matrix4::new(
+            1.0,    0.0,    0.0,    0.0,
+            0.0,    -1.0,   0.0,    0.0,
+            0.0,    0.0,    0.5,    0.0,
+            0.0,    0.0,    0.5,    1.0,
         );
 
-        let proj = {
-            let proj = cgmath::perspective(self.fovy, aspect, self.near, self.far);
-            // https://matthewwellings.com/blog/the-new-vulkan-coordinate-system/
-            let vulkan_correction = Matrix4::new(
-                1.0,    0.0,    0.0,    0.0,
-                0.0,    -1.0,   0.0,    0.0,
-                0.0,    0.0,    0.5,    0.0,
-                0.0,    0.0,    0.5,    1.0,
-            );
+        vulkan_correction * proj
+    }
 
-            vulkan_correction * proj
-        };
-
-        proj * view
+    pub fn matrix(&self, aspect: f32) -> Matrix4<f32> {
+        self.projection(aspect) * self.view()
     }
 }

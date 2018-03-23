@@ -379,6 +379,7 @@ impl Renderer {
             },
             ModelType::Quad => Model::quad([1.0, 0.0, 0.0], self.device.clone(), &self.memory_types[..]),
             ModelType::Hex => Model::hex([1.0, 0.0, 0.0], self.device.clone(), &self.memory_types[..]),
+            ModelType::Sphere => Model::sphere([0.5, 0.5, 0.0], self.device.clone(), &self.memory_types[..]),
         };
 
         self.models.entry(key.clone())
