@@ -7,6 +7,7 @@ authors = ["Callym <hi@callym.com>"]
 opalite_macro = { path = "../opalite_macro", features = ["internal"] }
 bincode = "1.0"
 cgmath = { version = "0.16", features = ["serde", "simd", "swizzle"] }
+conrod = { version = "0.58", features = ["winit"] }
 failure = "0.1"
 failure_derive = "0.1"
 gfx_window_glutin = "0.12"

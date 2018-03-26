@@ -14,6 +14,7 @@
 
 pub extern crate bincode;
 #[macro_use] pub extern crate cgmath;
+#[macro_use] pub extern crate conrod;
 #[macro_use] extern crate failure;
 #[macro_use] extern crate failure_derive;
 extern crate futures;
@@ -74,6 +75,7 @@ pub use mutex_ext::{ RLock, WLock };
 pub use opal::{
     OpalBuilder,
     Opal,
+    OpalUi,
     WindowClosed,
 };
 

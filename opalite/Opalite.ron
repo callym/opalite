@@ -4,6 +4,7 @@
     window_dimensions: (1024, 768),
     shaders: {
         "main": Builtin("resources/shaders/main"),
+        "ui": Builtin("resources/shaders/ui"),
     },
     map_dimensions: (50, 50, 10),
 )

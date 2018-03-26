@@ -1,8 +1,9 @@
 use std::cmp::PartialEq;
 use cgmath::{ Deg, Vector3 };
+use conrod::UiBuilder;
 use specs::{ DispatcherBuilder, Dispatcher, World };
 use winit::{ EventsLoop, WindowBuilder, Window };
-use super::{ DefaultSystems, Opal, WindowClosed };
+use super::{ DefaultSystems, Opal, OpalUi, WindowClosed };
 use crate::{
     AiComponent,
     AiSystem,
@@ -190,11 +191,17 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::World> {
         let PartialOpalBuilder { config, mut default_systems, dispatcher, events_loop, window, world, .. } = self;
         let dispatcher = dispatcher.unwrap().build();
         let window = window.unwrap();
-        let world = world.unwrap();
+        let mut world = world.unwrap();
 
         let mut input_event_handler = InputEventHandler::new();
         input_event_handler.register(InputEventType::MouseClickedWithCoordinates, default_systems.picker_system_sender.take().unwrap());
 
-        Opal { config, dispatcher, events_loop, input_event_handler, window, world }
+        let (width, height) = window.get_inner_size().unwrap();
+        let ui = UiBuilder::new([width as f64, height as f64])
+            .build();
+
+        world.add_resource(OpalUi(None));
+
+        Opal { config, dispatcher, events_loop, input_event_handler, ui, window, world }
     }
 }

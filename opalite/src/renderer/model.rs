@@ -9,12 +9,18 @@ use back::Backend as B;
 use hal::{ self, Backend };
 use cgmath::{ prelude::*, Matrix4, Vector3 };
 use uuid::Uuid;
-use crate::{ renderer::Buffer, RLock };
+use crate::{ renderer::{ Buffer, BufferData }, RLock };
 
 #[derive(BufferData, Copy, Clone, Debug)]
 pub struct Vertex {
     pub position: [f32; 3],
     pub color: [f32; 3],
+}
+
+#[derive(BufferData, Copy, Clone, Debug)]
+pub struct UiVertex {
+    pub position: [f32; 2],
+    pub color: [f32; 4],
 }
 
 impl Vertex {
@@ -151,8 +157,8 @@ pub enum ModelType {
     File(PathBuf),
 }
 
-pub struct Model {
-    pub vertex_buffer: Buffer<Vertex, B>,
+pub struct Model<V: BufferData = Vertex> {
+    pub vertex_buffer: Buffer<V, B>,
     pub index_buffer: Buffer<u32, B>,
 }
 
