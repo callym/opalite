@@ -4,23 +4,27 @@
     const_fn,
     crate_in_paths,
     get_type_id,
+    macro_at_most_once_rep,
     match_default_bindings,
     nll,
     specialization,
+    trace_macros,
     universal_impl_trait,
 )]
 
 #[macro_use] extern crate opalite_macro;
 
+extern crate anymap;
 pub extern crate bincode;
 #[macro_use] pub extern crate cgmath;
 #[macro_use] pub extern crate conrod;
 #[macro_use] extern crate failure;
 #[macro_use] extern crate failure_derive;
-extern crate futures;
 extern crate glsl_to_spirv;
 pub extern crate gfx_hal as hal;
 extern crate gfx_backend_vulkan as back;
+extern crate gluon;
+#[macro_use] extern crate gluon_vm;
 extern crate owning_ref;
 extern crate ron;
 #[macro_use] extern crate serde;
@@ -31,6 +35,7 @@ extern crate winit;
 
 mod ai;
 mod config;
+#[macro_use] pub mod gluon_api;
 mod input_events;
 mod map;
 mod mutex_ext;
@@ -52,6 +57,10 @@ pub use config::{
     Config,
     ConfigBuilder,
     ShaderLocation,
+};
+
+pub use gluon_api::{
+    Data,
 };
 
 pub use input_events::{

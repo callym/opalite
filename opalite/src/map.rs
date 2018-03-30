@@ -14,6 +14,20 @@ use crate::{
 #[derive(Component, Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct InitialPosition(pub Vector3<i32>);
 
+impl InitialPosition {
+    pub fn x(&self) -> f64 {
+        self.0.x as f64
+    }
+
+    pub fn y(&self) -> f64 {
+        self.0.y as f64
+    }
+
+    pub fn z(&self) -> f64 {
+        self.0.z as f64
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CollisionLayer(pub i32);
 
@@ -55,6 +69,7 @@ pub enum MapMessage {
 
 impl Message for MapMessage { }
 
+#[derive(Debug, Clone)]
 pub struct Map {
     width: i32,
     height: i32,

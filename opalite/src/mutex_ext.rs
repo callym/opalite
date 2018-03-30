@@ -1,6 +1,7 @@
 use std::sync::{ Arc, LockResult, RwLock, RwLockReadGuard, RwLockWriteGuard };
 
-pub struct RLock<T>(Arc<RwLock<T>>);
+#[derive(Debug, Clone)]
+pub struct RLock<T>(pub(crate) Arc<RwLock<T>>);
 
 impl<T> RLock<T> {
     pub fn new(data: T) -> Self {
@@ -13,7 +14,8 @@ impl<T> RLock<T> {
     }
 }
 
-pub struct WLock<T>(Arc<RwLock<T>>);
+#[derive(Debug, Clone)]
+pub struct WLock<T>(pub(crate) Arc<RwLock<T>>);
 
 impl<T> WLock<T> {
     pub fn new(data: T) -> Self {

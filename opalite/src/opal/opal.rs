@@ -1,7 +1,9 @@
-use std::{ cmp::PartialEq, ops::{ Deref, DerefMut } };
+use std::{ cmp::PartialEq, collections::HashMap, ops::{ Deref, DerefMut } };
 use cgmath::Vector3;
-use conrod::{ self, render::OwnedPrimitives, widget::{ id::Generator, Id }, Ui };
+use conrod::{ self, render::OwnedPrimitives, widget::{ id::Generator, Id, Widget }, Ui };
+use gluon;
 use specs::{ DispatcherBuilder, Dispatcher, World };
+use uuid::Uuid;
 use winit::{ EventsLoop, WindowBuilder, Window };
 use crate::{
     AiComponent,
@@ -23,6 +25,7 @@ use crate::{
     RLock,
     Shard,
 };
+use crate::gluon_api::conrod::GluonWidget;
 
 pub struct WindowClosed(pub(super) bool);
 
@@ -43,6 +46,27 @@ impl Deref for OpalUi {
 }
 
 impl DerefMut for OpalUi {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+pub struct Gluon {
+    pub thread: gluon::RootedThread,
+    pub compiler: gluon::Compiler,
+}
+
+pub struct GluonUi(pub HashMap<String, GluonWidget>);
+
+impl Deref for GluonUi {
+    type Target = HashMap<String, GluonWidget>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for GluonUi {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -89,6 +113,7 @@ impl<'a, 'b> Opal<'a, 'b> {
         use winit::{ Event, WindowEvent };
 
         let Opal { dispatcher, events_loop, input_event_handler, ui, window, world, .. } = self;
+        let mut name_to_ui = HashMap::new();
 
         while *world.read_resource::<WindowClosed>() == false {
             events_loop.poll_events(|event| {
@@ -118,6 +143,28 @@ impl<'a, 'b> Opal<'a, 'b> {
                     None => (),
                 };
             });
+
+            {
+                let mut gluon_ui = world.write_resource::<GluonUi>();
+                let mut generator = ui.widget_id_generator();
+
+                let widgets: Vec<_> = gluon_ui.drain()
+                    .map(|(name, widget)| {
+                        let id = name_to_ui.entry(name.clone()).or_insert_with(|| generator.next());
+                        (name, widget, *id)
+                    })
+                    .collect();
+
+                let ui = &mut ui.set_widgets();
+
+                for (name, widget, id) in widgets.into_iter() {
+                    match widget {
+                        GluonWidget::BorderedRectangle { value } => value.0.set(id, ui),
+                        GluonWidget::Rectangle { value } => value.0.set(id, ui),
+                        GluonWidget::Oval { value } => value.0.set(id, ui),
+                    };
+                }
+            }
 
             {
                 let mut opal_ui = world.write_resource::<OpalUi>();
