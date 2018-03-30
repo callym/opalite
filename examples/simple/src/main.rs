@@ -1,4 +1,4 @@
-#![feature(nll)]
+#![feature(match_default_bindings, nll)]
 
 extern crate opalite;
 
@@ -41,20 +41,19 @@ fn main() {
         .with(InitialPosition((0, 0, 0).into()))
         .with(CollisionLayers::new([CollisionLayer::PLAYER].iter()))
         .with(AiComponent::new(
-            Box::new(|goal| AiGoalDo::Continue),
+            Box::new(|_| AiGoalDo::Continue),
             Box::new(|goal| {
                 match goal {
-                    &Some(ref goal) => {
+                    Some(ref goal) => {
                         match goal {
                             &AiGoal::Move { start, target, .. } => vec![AiGoal::Move {
                                 start: target,
                                 target: start,
                                 path: VecDeque::new(),
                             }],
-                            _ => vec![]
                         }
                     },
-                    &None => vec![
+                    None => vec![
                         AiGoal::Move {
                             start: Vector3::new(0, 0, 0),
                             target: Vector3::new(15, 0, 15),
@@ -118,15 +117,3 @@ let rect =
 
     let _ = opal.run();
 }
-
-/*
-let position =
-    match data_reference.get data with
-    | Some ref ->
-        match ref.entity with
-            | Some entity -> location map entity
-            | None -> vec3.new 0.0 0.0 0.0
-    | None -> vec3.new 0.0 0.0 0.0
-
-let color = rgba (position.x / 10.0) (position.y / 10.0) (position.z / 10.0) 1.0
-*/

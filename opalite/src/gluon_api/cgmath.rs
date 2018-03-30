@@ -3,14 +3,12 @@ use gluon::{
     self,
     vm::{
         self,
-        api::{ Getable, Pushable, Userdata, ValueRef, VmType },
-        gc::{ Gc, Move, Traverseable },
-        thread::Context,
+        api::{ Getable, Userdata, ValueRef, VmType },
+        gc::{ Gc, Traverseable },
         Variants,
     },
     Thread,
 };
-use crate::Opal;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Vec3(pub cgmath::Vector3<f64>);

@@ -3,10 +3,9 @@ use opalite::{
     hal::{ self, Backend },
     cgmath::Vector3,
     renderer::model,
-    specs::{ Entity, World },
+    specs::World,
     Backend as B,
     Buffer,
-    InitialPosition,
     Model,
     ModelData,
     ModelKey,
@@ -21,7 +20,7 @@ pub struct HexMetrics { }
 
 impl HexMetrics {
     pub const OUTER: f32 = 1.0;
-    pub const INNER: f32 = Self::OUTER * 0.866025404;
+    pub const INNER: f32 = Self::OUTER * 0.866_025_404;
     pub const CORNERS: [Vector3<f32>; 7] = [
         /*Vector3 { x: 0.0,           y: Self::OUTER,         z: 0.0 },
         Vector3 { x: Self::INNER,   y: 0.5 * Self::OUTER,   z: 0.0 },
@@ -55,10 +54,11 @@ pub struct HexGrid {
 }
 
 impl HexGrid {
+    #[cfg_attr(feature = "cargo-clippy", allow(new_ret_no_self))]
     pub fn new(width: i32, height: i32, world: &mut World) {
         let mut cells = vec![];
-        let mut vertices = vec![];
-        let mut indices = vec![];
+        let vertices = vec![];
+        let indices = vec![];
 
         let mut i = 0;
         for z in 0..height {
@@ -95,14 +95,14 @@ impl HexGrid {
         self.vertices.clear();
         self.indices.clear();
 
-        for cell in &self.cells.clone() {
-            self.triangulate_single(&cell);
+        for cell in self.cells.clone() {
+            self.triangulate_single(cell);
         }
 
         self.needs_reload = true;
     }
 
-    fn triangulate_single(&mut self, cell: &HexCell) {
+    fn triangulate_single(&mut self, cell: HexCell) {
         for i in 0..6 {
             self.add_triangle(HexGrid::generate_triangle(
                 cell.center,
@@ -141,7 +141,7 @@ impl HexGrid {
         self.indices.push(current_index + 2);
     }
 
-    fn create_cell(x: i32, z: i32, i: i32) -> HexCell {
+    fn create_cell(x: i32, z: i32, _i: i32) -> HexCell {
         let xf = x as f32;
         let zf = z as f32;
         let zf_2 = (z / 2) as f32;
@@ -169,9 +169,9 @@ impl ProceduralModel for HexGrid {
             model.vertex_buffer.write(&self.vertices[..]).unwrap();
             model.index_buffer.write(&self.indices[..]).unwrap();
         } else {
-            let (mut vertex_buffer, mut index_buffer) = (
-                Buffer::<Vertex, B>::new(device.clone(), self.vertices.len() as u64, hal::buffer::Usage::VERTEX, &memory_types).unwrap(),
-                Buffer::<u32, B>::new(device.clone(), self.indices.len() as u64, hal::buffer::Usage::INDEX, &memory_types).unwrap(),
+            let (vertex_buffer, index_buffer) = (
+                Buffer::<Vertex, B>::new(device.clone(), self.vertices.len() as u64, hal::buffer::Usage::VERTEX, memory_types).unwrap(),
+                Buffer::<u32, B>::new(device.clone(), self.indices.len() as u64, hal::buffer::Usage::INDEX, memory_types).unwrap(),
             );
 
             let model = WLock::new(Model {
@@ -186,7 +186,7 @@ impl ProceduralModel for HexGrid {
     }
 
     fn needs_reload(&mut self) -> bool {
-        if self.needs_reload == true {
+        if self.needs_reload {
             self.needs_reload = false;
             true
         } else {

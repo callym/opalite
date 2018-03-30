@@ -1,6 +1,5 @@
 #![feature(
     arbitrary_self_types,
-    conservative_impl_trait,
     const_fn,
     crate_in_paths,
     get_type_id,
@@ -8,14 +7,13 @@
     match_default_bindings,
     nll,
     specialization,
-    trace_macros,
-    universal_impl_trait,
 )]
 
 #[macro_use] extern crate opalite_macro;
 
 extern crate anymap;
 pub extern crate bincode;
+// rust says that macros from cgmath aren't used even though they are.
 #[macro_use] pub extern crate cgmath;
 #[macro_use] pub extern crate conrod;
 #[macro_use] extern crate failure;

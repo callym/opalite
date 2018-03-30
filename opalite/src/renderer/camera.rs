@@ -1,4 +1,3 @@
-use cgmath::prelude::*;
 use cgmath::{ self, Deg, Matrix4, Point3, Vector3 };
 
 pub struct Camera {

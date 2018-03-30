@@ -1,13 +1,12 @@
 use std::cmp::{ Ordering, PartialOrd };
 use cgmath::{ prelude::*, Vector3, Vector4 };
 use winit::{ ElementState, MouseButton };
-use specs::{ Entities, Entity, Fetch, System, ReadStorage, VecStorage, WriteStorage };
+use specs::{ Entities, Fetch, System, ReadStorage };
 use crate::{
     Camera,
     CollisionLayers,
     InputEvent,
     Map,
-    Message,
     MessageQueue,
     MessageSender,
     MessageReceiver,
@@ -42,7 +41,7 @@ impl<'a> Shard<'a> for PickerSystem {
 impl<'a> System<'a> for PickerSystem {
     type SystemData = (Fetch<'a, Camera>, Entities<'a>, ReadStorage<'a, Position>, Fetch<'a, RLock<Map>>, ReadStorage<'a, CollisionLayers>);
 
-    fn run(&mut self, (camera, entities, positions, map, collision_layers): Self::SystemData) {
+    fn run(&mut self, (camera, entities, positions, map, _collision_layers): Self::SystemData) {
         use specs::Join;
 
         let map = map.read().unwrap();
@@ -81,7 +80,7 @@ impl<'a> System<'a> for PickerSystem {
             let ray_origin = camera.position;
 
             let mut intersections = vec![];
-            for (entity, position) in (&*entities, &positions).join() {
+            for (entity, _) in (&*entities, &positions).join() {
                 let position = match map.location(&entity) {
                     Some(position) => Vector3::new(position.x as f32, position.y as f32, position.z as f32),
                     None => continue,

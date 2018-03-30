@@ -1,16 +1,14 @@
-use conrod::{ self, Borderable, Colorable, Positionable, widget, Widget };
+use conrod::{ self, Borderable, Colorable, Positionable, widget };
 use gluon::{
     self,
     vm::{
         self,
-        api::{ Getable, Pushable, Userdata, ValueRef, VmType },
-        gc::{ Gc, Move, Traverseable },
-        thread::Context,
+        api::{ Getable, Userdata, ValueRef, VmType },
+        gc::{ Gc, Traverseable },
         Variants,
     },
     Thread,
 };
-use crate::Opal;
 
 macro_rules! widget_impl {
     ($widget:ident) => (
@@ -273,5 +271,3 @@ impl Oval {
         Oval(widget::Oval::fill([x, y]), name)
     }
 }
-
-trace_macros!(false);

@@ -9,6 +9,7 @@ anymap = "0.12"
 bincode = "1.0"
 cgmath = { version = "0.16", features = ["serde", "simd", "swizzle"] }
 conrod = { version = "0.58", features = ["winit"] }
+conrod_derive = "=0.1.0"
 failure = "0.1"
 failure_derive = "0.1"
 gfx_window_glutin = "0.12"

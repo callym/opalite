@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use cgmath::{ Deg, Vector3 };
 use conrod::{ UiBuilder };
 use gluon;
-use specs::{ DispatcherBuilder, Dispatcher, World };
+use specs::{ DispatcherBuilder, World };
 use winit::{ EventsLoop, WindowBuilder, Window };
 use super::{ DefaultSystems, Gluon, GluonUi, Opal, OpalUi, WindowClosed };
 use crate::{
@@ -15,15 +15,12 @@ use crate::{
     InitialPosition,
     InputEventHandler,
     InputEventType,
-    MessageSender,
     ModelData,
     ModelKey,
-    MapSystem,
     Position,
     Renderer,
-    Shard,
 };
-use crate::gluon_api::{ self, DataReference, DataReferenceSystem, GluonUiComponent, RequireMap };
+use crate::gluon_api::{ self, DataReference, GluonUiComponent, RequireMap };
 
 #[allow(non_snake_case)]
 mod BuilderState {
@@ -66,7 +63,7 @@ impl OpalBuilder {
 
         let default_systems = DefaultSystems::new(&config);
 
-        let mut gluon = gluon::new_vm();
+        let gluon = gluon::new_vm();
 
         PartialOpalBuilder {
             config,
@@ -206,8 +203,8 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::DispatcherThreadLocal> {
 }
 
 impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::World> {
-    pub fn build(mut self) -> Opal<'a, 'b> {
-        let PartialOpalBuilder { config, mut default_systems, dispatcher, events_loop, mut gluon, window, world, .. } = self;
+    pub fn build(self) -> Opal<'a, 'b> {
+        let PartialOpalBuilder { config, mut default_systems, dispatcher, events_loop, gluon, window, world, .. } = self;
         let dispatcher = dispatcher.unwrap().build();
         let window = window.unwrap();
         let mut world = world.unwrap();

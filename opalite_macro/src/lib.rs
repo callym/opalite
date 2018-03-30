@@ -1,12 +1,10 @@
 #![recursion_limit="128"]
 
 #![feature(
-    conservative_impl_trait,
     crate_in_paths,
     match_default_bindings,
     nll,
     proc_macro,
-    universal_impl_trait,
 )]
 extern crate proc_macro;
 extern crate proc_macro2;
@@ -154,6 +152,7 @@ pub fn derive_buffer_data(input: TokenStream) -> TokenStream {
     };
 
     let derive = quote! {
+        #[allow(non_snake_case)]
         mod #dummy {
             #![allow(unused_assignments, unused_imports, dead_code)]
 
@@ -199,6 +198,7 @@ pub fn derive_push_constant(input: TokenStream) -> TokenStream {
 
 
     let derive = quote! {
+        #[allow(non_snake_case)]
         mod #dummy {
             #![allow(unused_assignments, unused_imports, dead_code)]
 

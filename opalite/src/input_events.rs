@@ -52,7 +52,7 @@ impl InputEventHandler {
     }
 
     pub fn register(&mut self, ty: InputEventType, sender: MessageSender<InputEvent>) {
-        let mut handlers = self.handlers.entry(ty)
+        let handlers = self.handlers.entry(ty)
             .or_insert(vec![]);
         handlers.push(sender);
     }

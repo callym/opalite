@@ -11,7 +11,7 @@
         }
 
         impl<'vm> Getable<'vm> for $gluon_ty {
-            fn from_value(vm: &'vm Thread, value: Variants) -> Self {
+            fn from_value(_: &'vm Thread, value: Variants) -> Self {
                 match value.as_ref() {
                     ValueRef::Userdata(data) => {
                         let data = data.downcast_ref::<Self>().unwrap();
@@ -21,8 +21,6 @@
                 }
             }
         }
-
-//        impl<'vm> Pushable<'vm> for $gluon_ty { }
     )
 }
 

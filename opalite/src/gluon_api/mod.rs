@@ -12,7 +12,7 @@ use gluon::{
     },
     Thread,
 };
-use specs::{ self, Entities, Fetch, FetchMut, ReadStorage, System, VecStorage, WriteStorage };
+use specs::{ self, Fetch, FetchMut, ReadStorage, System, VecStorage, WriteStorage };
 use crate::{ Map, RLock };
 use crate::opal::{ Gluon, GluonUi };
 use crate::InitialPosition;
@@ -52,7 +52,7 @@ impl<T> Traverseable for RLock<T> where T: Userdata + Clone {
 }
 
 impl<'vm, T> Getable<'vm> for RLock<T> where T: Userdata + Clone {
-    fn from_value(vm: &'vm Thread, value: Variants) -> Self {
+    fn from_value(_: &'vm Thread, value: Variants) -> Self {
         match value.as_ref() {
             ValueRef::Userdata(data) => {
                 let data = data.downcast_ref::<T>().unwrap();
@@ -109,7 +109,7 @@ impl Data {
     }
 
     pub fn get<T: 'static>(&self) -> Option<T> where T: Clone + Send + Sync  {
-        let mut map = self.0.lock().unwrap();
+        let map = self.0.lock().unwrap();
         map.get().map(|t: &T| t.clone())
     }
 
@@ -119,7 +119,7 @@ impl Data {
     }
 
     pub fn contains<T: 'static>(&self) -> bool where T: Clone + Send + Sync  {
-        let mut map = self.0.lock().unwrap();
+        let map = self.0.lock().unwrap();
         map.contains::<T>()
     }
 }
@@ -210,12 +210,11 @@ impl RequireMapSystem {
 }
 
 impl<'a> System<'a> for RequireMapSystem {
-    type SystemData =  (Entities<'a>,
-                        ReadStorage<'a, RequireMap>,
+    type SystemData =  (ReadStorage<'a, RequireMap>,
                         ReadStorage<'a, Data>,
                         Fetch<'a, RLock<Map>>);
 
-    fn run(&mut self, (entities, require_maps, datas, map): Self::SystemData) {
+    fn run(&mut self, (require_maps, datas, map): Self::SystemData) {
         use specs::Join;
 
         for (_, data) in (&require_maps, &datas).join() {
@@ -233,11 +232,10 @@ impl DataReferenceSystem {
 }
 
 impl<'a> System<'a> for DataReferenceSystem {
-    type SystemData =  (Entities<'a>,
-                        WriteStorage<'a, DataReference>,
+    type SystemData =  (WriteStorage<'a, DataReference>,
                         ReadStorage<'a, Data>);
 
-    fn run(&mut self, (entities, mut data_refs, datas): Self::SystemData) {
+    fn run(&mut self, (mut data_refs, datas): Self::SystemData) {
         use specs::Join;
 
         for (data_ref, data) in (&mut data_refs, &datas).join() {

@@ -7,7 +7,7 @@ use std::{
 };
 use back::Backend as B;
 use hal::{ self, Backend };
-use cgmath::{ prelude::*, Matrix4, Vector3 };
+use cgmath::{ Matrix4, Vector3 };
 use uuid::Uuid;
 use crate::{ renderer::{ Buffer, BufferData }, RLock };
 
@@ -255,14 +255,14 @@ pub fn make_hex(color: [f32; 3]) -> ([Vertex; 7], [u32; 18]) {
 }
 
 pub fn make_sphere(color: [f32; 3]) -> (Vec<Vertex>, Vec<u32>) {
-    let X = 0.525731112119133606;
-    let Z = 0.850650808352039932;
-    let N = 0.0;
+    let x = 0.525731112119133606;
+    let z = 0.850650808352039932;
+    let n = 0.0;
 
     let icosahedron = vec![
-        [-X, N, Z], [X, N, Z], [-X, N,-Z], [X, N,-Z],
-        [N, Z, X], [N, Z,-X], [N,-Z, X], [N,-Z,-X],
-        [Z, X, N], [-Z, X, N], [Z,-X, N], [-Z,-X, N],
+        [-x, n, z], [x, n, z], [-x, n,-z], [x, n,-z],
+        [n, z, x], [n, z,-x], [n,-z, x], [n,-z,-x],
+        [z, x, n], [-z, x, n], [z,-x, n], [-z,-x, n],
     ];
 
     let indices = vec![

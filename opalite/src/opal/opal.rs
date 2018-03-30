@@ -1,29 +1,12 @@
 use std::{ cmp::PartialEq, collections::HashMap, ops::{ Deref, DerefMut } };
-use cgmath::Vector3;
-use conrod::{ self, render::OwnedPrimitives, widget::{ id::Generator, Id, Widget }, Ui };
+use conrod::{ self, render::OwnedPrimitives, widget::{ Id, Widget }, Ui };
 use gluon;
-use specs::{ DispatcherBuilder, Dispatcher, World };
-use uuid::Uuid;
-use winit::{ EventsLoop, WindowBuilder, Window };
+use specs::{ Dispatcher, World };
+use winit::{ EventsLoop, Window };
 use crate::{
-    AiComponent,
-    AiSystem,
-    CollisionLayers,
     Config,
-    ConfigBuilder,
-    InitialPosition,
     InputEvent,
     InputEventHandler,
-    MapMessage,
-    MessageSender,
-    ModelData,
-    ModelKey,
-    Map,
-    MapSystem,
-    Position,
-    Renderer,
-    RLock,
-    Shard,
 };
 use crate::gluon_api::conrod::GluonWidget;
 
@@ -151,13 +134,13 @@ impl<'a, 'b> Opal<'a, 'b> {
                 let widgets: Vec<_> = gluon_ui.drain()
                     .map(|(name, widget)| {
                         let id = name_to_ui.entry(name.clone()).or_insert_with(|| generator.next());
-                        (name, widget, *id)
+                        (widget, *id)
                     })
                     .collect();
 
                 let ui = &mut ui.set_widgets();
 
-                for (name, widget, id) in widgets.into_iter() {
+                for (widget, id) in widgets.into_iter() {
                     match widget {
                         GluonWidget::BorderedRectangle { value } => value.0.set(id, ui),
                         GluonWidget::Rectangle { value } => value.0.set(id, ui),

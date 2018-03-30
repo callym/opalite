@@ -1,6 +1,6 @@
-use std::{ collections::{ HashMap, HashSet }, ops, sync::{ mpsc, Arc } };
+use std::{ collections::{ HashMap, HashSet }, ops, sync::mpsc };
 use cgmath::Vector3;
-use specs::{ Entities, Entity, System, ReadStorage, VecStorage, WriteStorage };
+use specs::{ Entities, Entity, System, ReadStorage, WriteStorage };
 use crate::{
     Message,
     MessageQueue,

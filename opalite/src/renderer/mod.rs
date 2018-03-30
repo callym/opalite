@@ -1,11 +1,10 @@
 use std::{ collections::HashMap, mem, ops::Drop, sync::{ Arc, Mutex } };
-use bincode::serialize;
-use cgmath::{ Matrix4, SquareMatrix, Vector3 };
+use cgmath::Vector3;
 use conrod::{ self, render::{ self, PrimitiveWalker } };
 use failure::Error;
 use specs::{ Entities, Fetch, FetchMut, ReadStorage, System, WriteStorage };
 use winit::Window;
-use crate::{ Config, Map, OpalUi, Position, RLock, WindowClosed };
+use crate::{ Config, Map, OpalUi, RLock, WindowClosed };
 
 use back;
 use back::Backend as B;
@@ -465,7 +464,7 @@ impl Renderer {
             depth: 0.0 .. 1.0,
         };
 
-        let mut locals = Buffer::<Locals, B>::new(device.clone(), 1, hal::buffer::Usage::UNIFORM, &memory_types).unwrap();
+        let locals = Buffer::<Locals, B>::new(device.clone(), 1, hal::buffer::Usage::UNIFORM, &memory_types).unwrap();
 
         {
             let device = device.lock().unwrap();
@@ -558,7 +557,7 @@ impl<'a> System<'a> for Renderer {
         for model_key in (&mut model_keys).join() {
             match self.models.get_mut(model_key) {
                 None => { self.load_model(model_key); },
-                Some(key) => {
+                Some(_) => {
                     let reload = match model_key.ty_mut() {
                         ModelType::Procedural(procedural) => {
                             let mut procedural = procedural.lock().unwrap();
@@ -577,7 +576,6 @@ impl<'a> System<'a> for Renderer {
         let Self {
             device,
             dimensions,
-            dpi_factor,
             command_pool,
             frame_fence,
             frame_semaphore,
@@ -611,7 +609,7 @@ impl<'a> System<'a> for Renderer {
 
         locals.write(&[Locals {
             proj_view: camera.matrix(ratio).into(),
-        }]);
+        }]).unwrap();
 
         command_pool.reset();
         let frame = swap_chain.acquire_frame(FrameSync::Semaphore(frame_semaphore));
@@ -684,8 +682,6 @@ impl<'a> System<'a> for Renderer {
 
         let mut current_state = UiState::None;
 
-        let (half_win_w, half_win_h) = (dimensions.0 as f32 / 2.0, dimensions.1 as f32 / 2.0);
-
         let vx = |x: f64| {
             if ratio > 1.0 {
                 (x as f32) * (dimensions.1 as f32 / dimensions.0 as f32)
@@ -702,7 +698,7 @@ impl<'a> System<'a> for Renderer {
             }
         };
 
-        let mut finish_state = |vertices: &mut Vec<UiVertex>, indices: &mut Vec<u32>| {
+        let finish_state = |vertices: &mut Vec<UiVertex>, indices: &mut Vec<u32>| {
             if vertices.is_empty() || indices.is_empty() {
                 return None;
             }
@@ -720,13 +716,13 @@ impl<'a> System<'a> for Renderer {
         };
 
         if opal_ui.is_some() {
-            let mut opal_ui = opal_ui.as_mut().unwrap();
+            let opal_ui = opal_ui.as_mut().unwrap();
             let mut opal_ui = opal_ui.walk();
 
             ui.clear();
 
             while let Some(primitive) = opal_ui.next_primitive() {
-                let render::Primitive { kind, scizzor, rect, .. } = primitive;
+                let render::Primitive { kind, rect, .. } = primitive;
 
                 match kind {
                     render::PrimitiveKind::Rectangle { color } => {
@@ -734,7 +730,7 @@ impl<'a> System<'a> for Renderer {
                             finish_state(&mut vertices, &mut indices)
                                 .map(|m| ui.push(m));
                             index = 0;
-                            current_state = UiState::None;
+                            current_state = UiState::Plain;
                         }
 
                         let (l, r, b, t) = rect.l_r_b_t();
@@ -762,8 +758,6 @@ impl<'a> System<'a> for Renderer {
                         indices.push(index + 4);
                         indices.push(index + 5);
                         index += 6;
-
-                        current_state = UiState::Plain;
                     },
                     render::PrimitiveKind::TrianglesSingleColor { color, triangles } => {
                         if triangles.is_empty() {
@@ -839,7 +833,6 @@ impl<'a> System<'a> for Renderer {
             finish_state(&mut vertices, &mut indices)
                 .map(|m| ui.push(m));
             index = 0;
-            current_state = UiState::None;
         }
 
         if ui.is_empty() == false {
