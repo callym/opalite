@@ -19,6 +19,8 @@ use crate::{
     ModelKey,
     Position,
     Renderer,
+    RLock,
+    Resources,
 };
 use crate::gluon_api::{ self, DataReference, GluonUiComponent, RequireMap };
 use crate::renderer::MaterialDesc;
@@ -40,6 +42,7 @@ pub struct PartialOpalBuilder<'a, 'b, S> {
     dispatcher: Option<DispatcherBuilder<'a, 'b>>,
     events_loop: EventsLoop,
     gluon: gluon::RootedThread,
+    resources: RLock<Resources>,
     window: Option<Window>,
     world: Option<World>,
     #[allow(dead_code)]
@@ -49,7 +52,8 @@ pub struct PartialOpalBuilder<'a, 'b, S> {
 impl OpalBuilder {
     pub fn new<'a, 'b>() -> PartialOpalBuilder<'a, 'b, BuilderState::New> {
         let config = {
-            let mut default_config = Config::from_file(format!("{}/Opalite.ron", env!("CARGO_MANIFEST_DIR"))).unwrap();
+            let mut default_config = Config::from_str(include_str!("../../Opalite.ron")).unwrap();
+
             let cwd = {
                 let mut cwd = ::std::env::current_dir().unwrap();
                 cwd.push("Opalite.ron");
@@ -64,6 +68,9 @@ impl OpalBuilder {
 
         let default_systems = DefaultSystems::new(&config);
 
+        let resources = Resources::from_config(&config).unwrap();
+        let resources = RLock::new(resources);
+
         let gluon = gluon::new_vm();
 
         PartialOpalBuilder {
@@ -72,6 +79,7 @@ impl OpalBuilder {
             dispatcher: None,
             events_loop: EventsLoop::new(),
             gluon,
+            resources,
             window: None,
             world: None,
             state: BuilderState::New,
@@ -101,6 +109,7 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::New> {
             dispatcher: Some(dispatcher),
             events_loop: self.events_loop,
             gluon: self.gluon,
+            resources: self.resources,
             window: None,
             world: self.world,
             state: BuilderState::DispatcherStart,
@@ -123,6 +132,7 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::DispatcherStart> {
             dispatcher: Some(dispatcher),
             events_loop: self.events_loop,
             gluon: self.gluon,
+            resources: self.resources,
             window: None,
             world: self.world,
             state: BuilderState::DispatcherEnd,
@@ -138,7 +148,7 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::DispatcherEnd> {
             .build(&self.events_loop)
             .unwrap();
 
-        let renderer = Renderer::new(self.config.clone(), &window).unwrap();
+        let renderer = Renderer::new(self.config.clone(), self.resources.clone(), &window).unwrap();
 
         let dispatcher = self.dispatcher.take()
             .unwrap()
@@ -152,6 +162,7 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::DispatcherEnd> {
             dispatcher: Some(dispatcher),
             events_loop: self.events_loop,
             gluon: self.gluon,
+            resources: self.resources,
             window: Some(window),
             world: self.world,
             state: BuilderState::DispatcherThreadLocal,
@@ -197,6 +208,7 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::DispatcherThreadLocal> {
             dispatcher: self.dispatcher,
             events_loop: self.events_loop,
             gluon: self.gluon,
+            resources: self.resources,
             window: self.window,
             world: Some(world),
             state: BuilderState::World,
@@ -206,7 +218,7 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::DispatcherThreadLocal> {
 
 impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::World> {
     pub fn build(self) -> Opal<'a, 'b> {
-        let PartialOpalBuilder { config, mut default_systems, dispatcher, events_loop, gluon, window, world, .. } = self;
+        let PartialOpalBuilder { config, mut default_systems, dispatcher, events_loop, gluon, resources, window, world, .. } = self;
         let dispatcher = dispatcher.unwrap().build();
         let window = window.unwrap();
         let mut world = world.unwrap();
@@ -220,6 +232,7 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::World> {
 
         world.add_resource(OpalUi(None));
         world.add_resource(GluonUi(HashMap::new()));
+        world.add_resource(resources);
 
         gluon_api::register_opalite_api(&gluon);
 

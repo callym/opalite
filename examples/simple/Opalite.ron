@@ -1,4 +1,9 @@
 #![enable(implicit_some, unwrap_newtypes)]
 (
-    title: "Simple Example",
+    title: "Example",
+    resources: [
+//        "resources.zip",
+// uses the base resources folder
+        "../../opalite/resources",
+    ],
 )

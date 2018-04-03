@@ -33,6 +33,7 @@ pub extern crate specs;
 #[macro_use] pub extern crate specs_derive;
 extern crate uuid;
 extern crate winit;
+extern crate zip;
 
 mod ai;
 mod config;
@@ -43,6 +44,7 @@ mod mutex_ext;
 mod opal;
 mod picker;
 pub mod renderer;
+mod resources;
 mod system;
 
 pub use back::Backend;
@@ -57,7 +59,6 @@ pub use ai::{
 pub use config::{
     Config,
     ConfigBuilder,
-    ShaderLocation,
 };
 
 pub use gluon_api::{
@@ -108,6 +109,8 @@ pub use renderer::{
     SurfaceType,
     Vertex,
 };
+
+pub use resources::Resources;
 
 pub use system::{
     Message,

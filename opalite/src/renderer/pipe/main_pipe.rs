@@ -1,6 +1,6 @@
 use std::{ collections::HashMap, mem, sync::{ Arc, Mutex } };
 use failure::Error;
-use crate::{ Config, RLock };
+use crate::{ Config, Resources, RLock };
 use crate::renderer::{ self, Buffer, BufferData, ImageKey, Image, MaterialDesc, Material, ModelKey, Model, RenderError, PushConstant, Sampler, ShaderKey, Shader };
 use crate::renderer::pipe::{ PipeKey, Pipe };
 use crate::renderer::model::Vertex;
@@ -159,6 +159,7 @@ impl MainPipe {
     pub fn new(
         backbuffer: &hal::Backbuffer<B>,
         config: &Config,
+        resources: &RLock<Resources>,
         dimensions: (u32, u32),
         dpi_factor: f32,
         device: Arc<Mutex<back::Device>>,
@@ -233,7 +234,7 @@ impl MainPipe {
         let pipeline = {
             let device = device.lock().unwrap();
 
-            let shader = Shader::load_from_config(config, &ShaderKey::new("main"))?;
+            let shader = Shader::load_from_config(config, resources, &ShaderKey::new("main"))?;
             let vs_module = device.create_shader_module(&shader.vertex[..])
                 .map_err(|_| RenderError::ShaderModuleFail("Vertex"))?;
             let fs_module = device.create_shader_module(&shader.fragment[..])

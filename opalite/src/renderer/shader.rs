@@ -1,7 +1,7 @@
 use std::{ fs::File, io::Read, path::PathBuf };
 use failure::{ self, Error };
 use glsl_to_spirv::{ self, ShaderType };
-use crate::{ Config, ShaderLocation };
+use crate::{ Config, Resources, RLock };
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone)]
 pub struct ShaderKey(String);
@@ -19,13 +19,8 @@ pub struct Shader {
 }
 
 impl Shader {
-    pub fn load(path: &PathBuf) -> Result<Self, Error> {
-        let read_to_string = |path: &PathBuf| -> Result<String, Error> {
-            let mut code = String::new();
-            let mut file = File::open(path)?;
-            file.read_to_string(&mut code)?;
-            Ok(code)
-        };
+    pub fn load(path: &PathBuf, resources: &RLock<Resources>) -> Result<Self, Error> {
+        let resources = resources.read().unwrap();
 
         let read_to_vec = |file: &mut File| -> Result<Vec<u8>, Error> {
             let mut code = vec![];
@@ -49,7 +44,7 @@ impl Shader {
             };
 
             path.set_file_name(format!("{}.{}.glsl", filename, ext));
-            let file = read_to_string(&path)?;
+            let file = resources.get_string(&path)?;
             let mut file = glsl_to_spirv::compile(&file, shader_type)
                 .map_err(|e| failure::err_msg(e))?;
             read_to_vec(&mut file)
@@ -61,22 +56,10 @@ impl Shader {
         Ok(Self { vertex, fragment })
     }
 
-    pub fn load_from_config(config: &Config, shader: &ShaderKey) -> Result<Shader, Error> {
+    pub fn load_from_config(config: &Config, resources: &RLock<Resources>, shader: &ShaderKey) -> Result<Shader, Error> {
         ensure!(config.shaders.contains_key(&shader), "Shader isn't in Opal.ron");
 
-        let path = match config.shaders.get(&shader).unwrap() {
-            ShaderLocation::Builtin(path) => {
-                let mut base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-                base.push(path);
-                base
-            },
-            ShaderLocation::Custom(path) => {
-                let mut base = PathBuf::from(::std::env::var("CARGO_MANIFEST_DIR").unwrap());
-                base.push(path);
-                base
-            },
-        };
-
-        Shader::load(&path)
+        let path = config.shaders.get(&shader).unwrap();
+        Shader::load(&path, resources)
     }
 }

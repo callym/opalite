@@ -3,7 +3,7 @@ use cgmath::Vector3;
 use failure::Error;
 use specs::{ Entities, Fetch, FetchMut, ReadStorage, System, WriteStorage };
 use winit::Window;
-use crate::{ Config, Map, OpalUi, RLock, WindowClosed };
+use crate::{ Config, Map, OpalUi, Resources, RLock, WindowClosed };
 
 use back;
 use back::Backend as B;
@@ -86,6 +86,7 @@ pub struct Renderer {
     limits: hal::Limits,
     memory_types: Vec<hal::MemoryType>,
     queue_group: hal::QueueGroup<B, hal::Graphics>,
+    resources: RLock<Resources>,
     swap_chain: <B as Backend>::Swapchain,
     main_pipe: MainPipe,
     ui_pipe: UiPipe,
@@ -103,7 +104,7 @@ fn choose_adapters(mut adapters: Vec<Adapter<B>>) -> Result<Adapter<B>, Error> {
 }
 
 impl Renderer {
-    pub fn new(config: Config, window: &Window) -> Result<Self, Error> {
+    pub fn new(config: Config, resources: RLock<Resources>, window: &Window) -> Result<Self, Error> {
         let (width, height) = window.get_inner_size().ok_or(RenderError::WindowSize)?;
         let dpi_factor = window.hidpi_factor();
 
@@ -150,6 +151,7 @@ impl Renderer {
         let mut main_pipe = pipe::MainPipe::new(
             &backbuffer,
             &config,
+            &resources,
             (width, height),
             dpi_factor,
             device.clone(),
@@ -167,6 +169,7 @@ impl Renderer {
         let ui_pipe = pipe::UiPipe::new(
             &backbuffer,
             &config,
+            &resources,
             (width, height),
             dpi_factor,
             device.clone(),
@@ -184,6 +187,7 @@ impl Renderer {
             frame_semaphore,
             limits,
             memory_types,
+            resources,
             queue_group,
             swap_chain,
             _instance: instance,

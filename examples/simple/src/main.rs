@@ -1,4 +1,5 @@
 #![feature(match_default_bindings, nll)]
+use std::env;
 
 extern crate opalite;
 
@@ -27,6 +28,8 @@ use opalite::gluon_api::RequireMap;
 mod map;
 
 fn main() {
+    env::set_current_dir("examples/simple").unwrap();
+
     let mut opal = OpalBuilder::new()
         .add_dispatcher_start()
         .add_dispatcher_end()

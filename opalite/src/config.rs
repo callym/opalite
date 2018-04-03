@@ -3,25 +3,26 @@ use failure::Error;
 use ron;
 use crate::{ ShaderKey };
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum ShaderLocation {
-    Builtin(PathBuf),
-    Custom(PathBuf),
-}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
     pub title: String,
     pub window_dimensions: (u32, u32),
-    pub shaders: HashMap<ShaderKey, ShaderLocation>,
+    pub shaders: HashMap<ShaderKey, PathBuf>,
     pub map_dimensions: (i32, i32, i32),
+    pub resources: Vec<PathBuf>,
 }
 
 impl Config {
     pub fn from_file<P: Into<PathBuf>>(path: P) -> Result<Self, Error> {
         let path: PathBuf = path.into();
+        println!("{:?}", path);
         let file = File::open(&path)?;
         ron::de::from_reader(file).map_err(|e| e.into())
+    }
+
+    pub fn from_str(string: &str) -> Result<Self, Error> {
+        ron::de::from_str(string).map_err(|e| e.into())
     }
 
     pub fn merge(mut self, other: ConfigBuilder) -> Config {
@@ -35,12 +36,18 @@ impl Config {
 
         if let Some(shaders) = other.shaders {
             for (key, value) in shaders.into_iter() {
-                self.shaders.insert(key, ShaderLocation::Custom(value));
+                self.shaders.insert(key, value);
             }
         }
 
         if let Some(map_dimensions) = other.map_dimensions {
             self.map_dimensions = map_dimensions;
+        }
+
+        if let Some(resources) = other.resources {
+            let mut resources = resources.clone();
+            resources.extend(self.resources);
+            self.resources = resources;
         }
 
         self
@@ -53,6 +60,7 @@ pub struct ConfigBuilder {
     pub window_dimensions: Option<(u32, u32)>,
     pub shaders: Option<HashMap<ShaderKey, PathBuf>>,
     pub map_dimensions: Option<(i32, i32, i32)>,
+    pub resources: Option<Vec<PathBuf>>,
 }
 
 impl ConfigBuilder {

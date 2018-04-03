@@ -2,7 +2,7 @@ use std::{ mem, sync::{ Arc, Mutex } };
 use cgmath::Vector3;
 use conrod::{ self, render::{ self, PrimitiveWalker } };
 use failure::Error;
-use crate::{ Config, OpalUi };
+use crate::{ Config, OpalUi, Resources, RLock };
 use crate::renderer::{ self, Buffer, BufferData, Model, RenderError, PushConstant, ShaderKey, Shader };
 use crate::renderer::pipe::{ PipeKey, Pipe };
 use crate::renderer::model::{ ModelData, UiVertex };
@@ -291,6 +291,7 @@ impl UiPipe {
     pub fn new(
         backbuffer: &hal::Backbuffer<B>,
         config: &Config,
+        resources: &RLock<Resources>,
         dimensions: (u32, u32),
         dpi_factor: f32,
         device: Arc<Mutex<back::Device>>,
@@ -341,7 +342,7 @@ impl UiPipe {
         let pipeline = {
             let device = device.lock().unwrap();
 
-            let shader = Shader::load_from_config(config, &ShaderKey::new("ui"))?;
+            let shader = Shader::load_from_config(config, resources, &ShaderKey::new("ui"))?;
             let vs_module = device.create_shader_module(&shader.vertex[..])
                 .map_err(|_| RenderError::ShaderModuleFail("Vertex"))?;
             let fs_module = device.create_shader_module(&shader.fragment[..])
