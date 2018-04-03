@@ -21,6 +21,7 @@ use crate::{
     Renderer,
 };
 use crate::gluon_api::{ self, DataReference, GluonUiComponent, RequireMap };
+use crate::renderer::MaterialDesc;
 
 #[allow(non_snake_case)]
 mod BuilderState {
@@ -168,6 +169,7 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::DispatcherThreadLocal> {
             world.register::<Data>();
             world.register::<DataReference>();
             world.register::<GluonUiComponent>();
+            world.register::<MaterialDesc>();
             world.register::<ModelData>();
             world.register::<ModelKey>();
             world.register::<InitialPosition>();

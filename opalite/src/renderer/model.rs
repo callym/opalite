@@ -15,6 +15,7 @@ use crate::{ renderer::{ Buffer, BufferData }, RLock };
 pub struct Vertex {
     pub position: [f32; 3],
     pub color: [f32; 3],
+    pub uv: [f32; 2],
 }
 
 #[derive(BufferData, Copy, Clone, Debug)]
@@ -38,6 +39,10 @@ impl Vertex {
 
     pub fn set_color<P: Into<[f32; 3]>>(&mut self, val: P) {
         self.color = val.into();
+    }
+
+    pub fn set_uv<P: Into<[f32; 2]>>(&mut self, val: P) {
+        self.uv = val.into();
     }
 
     pub fn set_position<P: Into<[f32; 3]>>(&mut self, val: P) {
@@ -69,6 +74,7 @@ impl Default for Vertex {
         Self {
             position: [0.0; 3],
             color: [1.0, 1.0, 0.0],
+            uv: [0.0, 0.0],
         }
     }
 }
@@ -210,13 +216,13 @@ impl Model {
 }
 
 pub fn make_quad(color: [f32; 3]) -> [Vertex; 6] {[
-  Vertex { position: [ -0.5, 0.0, 0.5 ], color, .. Default::default() },
-  Vertex { position: [  0.5, 0.0, 0.5 ], color, .. Default::default() },
-  Vertex { position: [  0.5, 0.0,-0.5 ], color, .. Default::default() },
+  Vertex { position: [ -0.5, 0.0, 0.5 ], color, uv: [0.0, 1.0], .. Default::default() },
+  Vertex { position: [  0.5, 0.0, 0.5 ], color, uv: [1.0, 1.0], .. Default::default() },
+  Vertex { position: [  0.5, 0.0,-0.5 ], color, uv: [1.0, 0.0], .. Default::default() },
 
-  Vertex { position: [ -0.5, 0.5, 0.5 ], color, .. Default::default() },
-  Vertex { position: [  0.5, 0.0,-0.5 ], color, .. Default::default() },
-  Vertex { position: [ -0.5, 0.0,-0.5 ], color, .. Default::default() },
+  Vertex { position: [ -0.5, 0.5, 0.5 ], color, uv: [0.0, 1.0], .. Default::default() },
+  Vertex { position: [  0.5, 0.0,-0.5 ], color, uv: [1.0, 0.0], .. Default::default() },
+  Vertex { position: [ -0.5, 0.0,-0.5 ], color, uv: [0.0, 0.0], .. Default::default() },
 ]}
 
 pub fn make_hex(color: [f32; 3]) -> ([Vertex; 7], [u32; 18]) {
@@ -275,6 +281,7 @@ pub fn make_sphere(color: [f32; 3]) -> (Vec<Vertex>, Vec<u32>) {
     let vertices = icosahedron.iter().map(|v| Vertex {
         position: *v,
         color,
+        .. Default::default()
     }).collect();
 
     (vertices, indices)

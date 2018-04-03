@@ -17,6 +17,8 @@ pub trait Pipe {
 
     fn key(&self) -> PipeKey;
 
+    fn locals(&self) -> &Buffer<Self::Locals, B>;
+
     fn locals_mut(&mut self) -> &mut Buffer<Self::Locals, B>;
 
     fn update_locals(&mut self, locals: Self::Locals) {

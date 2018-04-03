@@ -11,7 +11,7 @@ use back;
 use back::Backend as B;
 
 use hal;
-use hal::{ command, device as d, format as f, image as i, pass, pso };
+use hal::{ command, format as f, image as i, pass, pso };
 use hal::{ Backend, Device };
 use hal::{
     DescriptorPool,
@@ -36,7 +36,7 @@ pub struct Locals {
 pub struct UiPipe {
     dimensions: (u32, u32),
     device: Arc<Mutex<back::Device>>,
-    viewport: hal::command::Viewport,
+    viewport: pso::Viewport,
     pipeline_layout: <B as Backend>::PipelineLayout,
     render_pass: <B as Backend>::RenderPass,
     pipeline: <B as Backend>::GraphicsPipeline,
@@ -52,6 +52,10 @@ impl Pipe for UiPipe {
 
     fn key(&self) -> PipeKey {
         PipeKey(String::from("Ui"))
+    }
+
+    fn locals(&self) -> &Buffer<Self::Locals, B> {
+        &self.locals
     }
 
     fn locals_mut(&mut self) -> &mut Buffer<Self::Locals, B> {
@@ -413,10 +417,10 @@ impl UiPipe {
             Backbuffer::Images(images) => {
                 let device = device.lock().unwrap();
 
-                let extent = d::Extent { width, height, depth: 1 };
+                let extent = i::Extent { width, height, depth: 1 };
                 let pairs = images.iter()
                     .map(|image| {
-                        let rtv = device.create_image_view(&image, surface_format, Swizzle::NO, renderer::COLOR_RANGE.clone())?;
+                        let rtv = device.create_image_view(&image, i::ViewKind::D2, surface_format, Swizzle::NO, renderer::COLOR_RANGE.clone())?;
                         Ok(rtv)
                     })
                     .collect::<Result<Vec<_>, Error>>()?;
@@ -431,8 +435,8 @@ impl UiPipe {
 
         let locals = Buffer::<<Self as Pipe>::Locals, B>::new(device.clone(), 1, hal::buffer::Usage::UNIFORM, &memory_types).unwrap();
 
-        let viewport = command::Viewport {
-            rect: command::Rect {
+        let viewport = pso::Viewport {
+            rect: pso::Rect {
                 x: 0,
                 y: 0,
                 w: width as _,

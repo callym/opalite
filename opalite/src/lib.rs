@@ -2,6 +2,7 @@
     arbitrary_self_types,
     const_fn,
     crate_in_paths,
+    fs_read_write,
     get_type_id,
     macro_at_most_once_rep,
     match_default_bindings,
@@ -23,6 +24,8 @@ pub extern crate gfx_hal as hal;
 extern crate gfx_backend_vulkan as back;
 extern crate gluon;
 #[macro_use] extern crate gluon_vm;
+extern crate image;
+extern crate ordered_float;
 extern crate owning_ref;
 extern crate ron;
 #[macro_use] extern crate serde;
@@ -95,12 +98,14 @@ pub use renderer::{
     BufferData,
     Camera,
     Renderer,
+    MaterialDesc,
     Model,
     ModelData,
     ModelKey,
     ModelType,
     ProceduralModel,
     ShaderKey,
+    SurfaceType,
     Vertex,
 };
 

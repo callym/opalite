@@ -6,15 +6,18 @@ use opalite::{
     specs::World,
     Backend as B,
     Buffer,
+    MaterialDesc,
     Model,
     ModelData,
     ModelKey,
     ModelType,
     ProceduralModel,
     RLock,
+    SurfaceType,
     Vertex,
     WLock,
 };
+use opalite::renderer::conv::*;
 
 pub struct HexMetrics { }
 
@@ -88,6 +91,9 @@ impl HexGrid {
                 translate: Vector3::new(0.0, 0.0, 0.0),
                 .. Default::default()
             })
+            .with(MaterialDesc {
+                diffuse: SurfaceType::Color(vec4(0.5, 0.5, 1.0, 1.0)),
+            })
             .build();
     }
 
@@ -152,7 +158,8 @@ impl HexGrid {
         let position = Vector3::new(xf, 0.0, zf);
         let center = Vertex {
             position: position.into(),
-            color: [0.5, 0.5, 1.0],
+            color: [1.0, 1.0, 1.0],
+            .. Default::default()
         };
 
         HexCell {
@@ -202,7 +209,7 @@ pub struct HexCell {
 
 impl ProceduralModel for HexCell {
     fn load(&mut self, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Model> {
-        let vertices = model::make_quad([0.5, 0.5, 1.0]).to_vec();
+        let vertices = model::make_quad([1.0, 1.0, 1.0]).to_vec();
 
         let mut vertex_buffer = Buffer::<Vertex, B>::new(device.clone(), vertices.len() as u64, hal::buffer::Usage::VERTEX, &memory_types).unwrap();
         vertex_buffer.write(&vertices[..]).unwrap();

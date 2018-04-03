@@ -12,11 +12,14 @@ use opalite::{
     CollisionLayer,
     CollisionLayers,
     Data,
+    MaterialDesc,
     ModelKey,
     ModelType,
     OpalBuilder,
     InitialPosition,
+    SurfaceType,
 };
+use opalite::renderer::conv::*;
 use opalite::gluon_api::DataReference;
 use opalite::gluon_api::GluonUiComponent;
 use opalite::gluon_api::RequireMap;
@@ -35,6 +38,9 @@ fn main() {
         .with(InitialPosition((0, 1, 0).into()))
         .with(CollisionLayers::new([CollisionLayer::PLAYER].iter()))
         .with(ModelKey::new(ModelType::Hex))
+        .with(MaterialDesc {
+            diffuse: SurfaceType::Color(vec4(0.75, 0.0, 0.0, 1.0)),
+        })
         .build();
 
     let entity = opal.world_mut().create_entity()
@@ -64,6 +70,9 @@ fn main() {
             }),
             Box::new(|_| panic!("AI Error"))))
         .with(ModelKey::new(ModelType::Sphere))
+        .with(MaterialDesc {
+            diffuse: SurfaceType::Color(vec4(0.5, 0.5, 0.0, 1.0)),
+        })
         .build();
 
     let data = Data::new();

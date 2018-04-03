@@ -26,6 +26,14 @@ pub use self::buffer::{ Buffer, BufferData };
 mod camera;
 pub use self::camera::Camera;
 
+pub mod conv;
+
+mod image;
+pub use self::image::{ Image, ImageKey, Sampler };
+
+mod material;
+pub use self::material::{ MaterialDesc, Material, SurfaceType };
+
 pub mod model;
 pub use self::model::{ ModelKey, Model, ModelData, ModelType, ProceduralModel, Vertex, UiVertex };
 
@@ -75,7 +83,7 @@ pub struct Renderer {
     dpi_factor: f32,
     frame_fence: <B as Backend>::Fence,
     frame_semaphore: <B as Backend>::Semaphore,
-    _limits: hal::Limits,
+    limits: hal::Limits,
     memory_types: Vec<hal::MemoryType>,
     queue_group: hal::QueueGroup<B, hal::Graphics>,
     swap_chain: <B as Backend>::Swapchain,
@@ -139,7 +147,7 @@ impl Renderer {
             (device.create_semaphore(), device.create_fence(false))
         };
 
-        let main_pipe = pipe::MainPipe::new(
+        let mut main_pipe = pipe::MainPipe::new(
             &backbuffer,
             &config,
             (width, height),
@@ -149,6 +157,12 @@ impl Renderer {
             surface_format,
             Some(depth_format),
         )?;
+
+        let (key, image) = Image::blank(&limits, device.clone(), &memory_types[..], main_pipe.sampler()).unwrap();
+        main_pipe.images_mut().insert(key, image);
+
+        let material = Material::new(MaterialDesc::fallback(), main_pipe.images(), main_pipe.locals(), device.clone(), main_pipe.set_layout());
+        main_pipe.materials_mut().insert(MaterialDesc::fallback(), material);
 
         let ui_pipe = pipe::UiPipe::new(
             &backbuffer,
@@ -168,7 +182,7 @@ impl Renderer {
             dpi_factor,
             frame_fence,
             frame_semaphore,
-            _limits: limits,
+            limits,
             memory_types,
             queue_group,
             swap_chain,
@@ -178,6 +192,12 @@ impl Renderer {
         })
     }
 
+    pub fn load_image(&mut self, key: &ImageKey, sampler: Arc<Sampler<B>>) -> (ImageKey, Image<B>) {
+        let format = ::image::ImageFormat::PNG;
+
+        Image::new(key.0.clone(), format, &self.limits, self.device.clone(), &self.memory_types[..], sampler).unwrap()
+    }
+
     pub fn load_model(&mut self, key: &mut ModelKey) -> RLock<Model> {
         match key.ty_mut() {
             ModelType::File(_) => unimplemented!(),
@@ -185,9 +205,9 @@ impl Renderer {
                 let mut procedural = procedural.lock().unwrap();
                 procedural.load(self.device.clone(), &self.memory_types[..])
             },
-            ModelType::Quad => Model::quad([1.0, 0.0, 0.0], self.device.clone(), &self.memory_types[..]),
-            ModelType::Hex => Model::hex([1.0, 0.0, 0.0], self.device.clone(), &self.memory_types[..]),
-            ModelType::Sphere => Model::sphere([0.5, 0.5, 0.0], self.device.clone(), &self.memory_types[..]),
+            ModelType::Quad => Model::quad([1.0, 1.0, 1.0], self.device.clone(), &self.memory_types[..]),
+            ModelType::Hex => Model::hex([1.0, 1.0, 1.0], self.device.clone(), &self.memory_types[..]),
+            ModelType::Sphere => Model::sphere([1.0, 1.0, 1.0], self.device.clone(), &self.memory_types[..]),
         }
     }
 }
@@ -201,19 +221,39 @@ impl Drop for Renderer {
 impl<'a> System<'a> for Renderer {
     type SystemData = (
         Entities<'a>,
-        WriteStorage<'a, ModelKey>, ReadStorage<'a, ModelData>,
+        WriteStorage<'a, ModelKey>, ReadStorage<'a, MaterialDesc>, ReadStorage<'a, ModelData>,
         Fetch<'a, Camera>,
         Fetch<'a, RLock<Map>>,
         FetchMut<'a, OpalUi>,
         Fetch<'a, WindowClosed>,
     );
 
-    fn run(&mut self, (entities, mut model_keys, model_datas, camera, map, mut opal_ui, window_closed): Self::SystemData) {
+    fn run(&mut self, (entities, mut model_keys, material_descs, model_datas, camera, map, mut opal_ui, window_closed): Self::SystemData) {
         use specs::Join;
 
         if *window_closed == true {
             println!("Window Closed");
             return;
+        }
+
+        for material_key in (&material_descs).join() {
+            if let None = self.main_pipe.materials().get(material_key) {
+                if let SurfaceType::Texture(ref key) = material_key.diffuse {
+                    if let None = self.main_pipe.images().get(key) {
+                        let sampler = self.main_pipe.sampler();
+                        let (key, image) = self.load_image(key, sampler);
+
+                        self.main_pipe.images_mut().insert(key, image);
+                    }
+                }
+
+                let images = self.main_pipe.images();
+                let set_layout = self.main_pipe.set_layout();
+                let locals = self.main_pipe.locals();
+
+                let material = Material::new(material_key.clone(), images, locals, self.device.clone(), set_layout);
+                self.main_pipe.materials_mut().insert(material_key.clone(), material);
+            }
         }
 
         for model_key in (&mut model_keys).join() {
@@ -265,9 +305,20 @@ impl<'a> System<'a> for Renderer {
 
         let mut command_buffer = command_pool.acquire_command_buffer(false);
 
+        for image in main_pipe.images_mut().values_mut() {
+            if image.submitted == false {
+                image.submit(&mut command_buffer);
+            }
+        }
+
         let models = (&*entities, &model_keys).join()
             .map(|(entity, model_key)| {
                 let map = map.read().unwrap();
+
+                let material_desc = match material_descs.get(entity) {
+                    Some(desc) => desc.clone(),
+                    None => MaterialDesc::fallback(),
+                };
 
                 let model_data = match model_datas.get(entity) {
                     Some(data) => *data,
@@ -283,6 +334,7 @@ impl<'a> System<'a> for Renderer {
 
                 (
                     model_key,
+                    material_desc,
                     MainModelLocals {
                         model: model_data.into(),
                     }
