@@ -1,6 +1,9 @@
 #![enable(implicit_some, unwrap_newtypes)]
 (
     title: "Example",
+    fonts: [
+        "fonts/playfair/PlayfairDisplay-Regular.ttf",
+    ],
     resources: [
 //        "resources.zip",
 // uses the base resources folder

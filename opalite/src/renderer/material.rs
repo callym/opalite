@@ -3,9 +3,7 @@ use crate::renderer::{ Buffer, BufferData, ImageKey, Image, PushConstant };
 use crate::renderer::conv::*;
 
 use ordered_float::NotNaN;
-use hal::{ self, pso, Backend, DescriptorPool, Device };
-
-use back;
+use hal::{ pso, Backend, DescriptorPool, Device };
 use back::Backend as B;
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]

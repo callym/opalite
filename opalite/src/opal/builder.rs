@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use cgmath::{ Deg, Vector3 };
 use conrod::{ UiBuilder };
 use gluon;
+use rusttype;
 use specs::{ DispatcherBuilder, World };
 use winit::{ EventsLoop, WindowBuilder, Window };
 use super::{ DefaultSystems, Gluon, GluonUi, Opal, OpalUi, WindowClosed };
@@ -227,8 +228,15 @@ impl<'a, 'b> PartialOpalBuilder<'a, 'b, BuilderState::World> {
         input_event_handler.register(InputEventType::MouseClickedWithCoordinates, default_systems.picker_system_sender.take().unwrap());
 
         let (width, height) = window.get_inner_size().unwrap();
-        let ui = UiBuilder::new([width as f64, height as f64])
+        let mut ui = UiBuilder::new([width as f64, height as f64])
             .build();
+
+        for font in &config.fonts {
+            let resources = resources.read().unwrap();
+            let bytes = resources.get(font).unwrap();
+            let font = rusttype::Font::from_bytes(bytes).unwrap();
+            ui.fonts.insert(font);
+        }
 
         world.add_resource(OpalUi(None));
         world.add_resource(GluonUi(HashMap::new()));

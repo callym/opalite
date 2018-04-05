@@ -12,7 +12,6 @@ use hal;
 use hal::{ command, format as f, image as i, memory as m, pass, pso };
 use hal::{ Backend, Device };
 use hal::{
-    DescriptorPool,
     Primitive,
     Backbuffer,
 };
@@ -99,8 +98,6 @@ impl MainPipe {
 
     pub fn draw(&mut self, command_buffer: &mut command::CommandBuffer<B, hal::Graphics>, frame_id: usize, model_locals: &[(&ModelKey, MaterialDesc, <Self as Pipe>::ModelsLocals)]) {
         let Self {
-            images,
-            materials,
             pipeline_layout,
             render_pass,
             pipeline,

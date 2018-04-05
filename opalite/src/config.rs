@@ -11,12 +11,12 @@ pub struct Config {
     pub shaders: HashMap<ShaderKey, PathBuf>,
     pub map_dimensions: (i32, i32, i32),
     pub resources: Vec<PathBuf>,
+    pub fonts: Vec<PathBuf>,
 }
 
 impl Config {
     pub fn from_file<P: Into<PathBuf>>(path: P) -> Result<Self, Error> {
         let path: PathBuf = path.into();
-        println!("{:?}", path);
         let file = File::open(&path)?;
         ron::de::from_reader(file).map_err(|e| e.into())
     }
@@ -50,6 +50,10 @@ impl Config {
             self.resources = resources;
         }
 
+        if let Some(fonts) = other.fonts {
+            self.fonts.extend(fonts);
+        }
+
         self
     }
 }
@@ -61,6 +65,7 @@ pub struct ConfigBuilder {
     pub shaders: Option<HashMap<ShaderKey, PathBuf>>,
     pub map_dimensions: Option<(i32, i32, i32)>,
     pub resources: Option<Vec<PathBuf>>,
+    pub fonts: Option<Vec<PathBuf>>,
 }
 
 impl ConfigBuilder {

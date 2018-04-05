@@ -28,6 +28,7 @@ extern crate image;
 extern crate ordered_float;
 extern crate owning_ref;
 extern crate ron;
+extern crate rusttype;
 #[macro_use] extern crate serde;
 pub extern crate specs;
 #[macro_use] pub extern crate specs_derive;

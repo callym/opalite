@@ -1,6 +1,6 @@
-use std::{ env, fs::{ self, File }, io::{ self, prelude::* }, path::PathBuf };
+use std::{ env, fs::File, io::{ self, prelude::* }, path::PathBuf };
 use failure::Error;
-use zip::{ ZipArchive, result::ZipError };
+use zip::ZipArchive;
 use crate::Config;
 
 #[derive(Debug, Copy, Clone)]
@@ -104,7 +104,7 @@ impl Resources {
         }
 
         for (path, kind) in &self.archives {
-            let state = match kind {
+            match kind {
                 ResourcesType::Zip => {
                     let mut zip = File::open(&path)?;
                     let mut zip = ZipArchive::new(zip)?;
@@ -126,7 +126,7 @@ impl Resources {
                         return cb(&mut file).map(|_| ()).map_err(|e| e.into());
                     }
                 },
-            };
+            }
         }
 
         let err: io::Error = io::ErrorKind::NotFound.into();

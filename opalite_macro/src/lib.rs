@@ -61,6 +61,10 @@ fn field_to_format(field: Tokens) -> Tokens {
         return quote!(#pre::Rgba32Float);
     }
 
+    if field == quote!(u32) || field == quote!([u32; 1]) {
+        return quote!(#pre::R32Uint);
+    }
+
     quote!(UndefinedType)
 }
 

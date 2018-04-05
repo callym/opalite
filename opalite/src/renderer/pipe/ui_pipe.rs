@@ -1,9 +1,9 @@
 use std::{ mem, sync::{ Arc, Mutex } };
 use cgmath::Vector3;
-use conrod::{ self, render::{ self, PrimitiveWalker } };
+use conrod::{ self, render::{ self, PrimitiveWalker }, text::{ rt, GlyphCache } };
 use failure::Error;
 use crate::{ Config, OpalUi, Resources, RLock };
-use crate::renderer::{ self, Buffer, BufferData, Model, RenderError, PushConstant, ShaderKey, Shader };
+use crate::renderer::{ self, Buffer, BufferData, Image, Model, RenderError, PushConstant, Sampler, ShaderKey, Shader };
 use crate::renderer::pipe::{ PipeKey, Pipe };
 use crate::renderer::model::{ ModelData, UiVertex };
 
@@ -33,9 +33,16 @@ pub struct Locals {
     pub proj_view: [[f32; 4]; 4],
 }
 
-pub struct UiPipe {
+enum Mode {
+    Text = 0,
+    Image = 1,
+    Geometry = 2,
+}
+
+pub struct UiPipe<'a> {
     dimensions: (u32, u32),
     device: Arc<Mutex<back::Device>>,
+    dpi_factor: f32,
     viewport: pso::Viewport,
     pipeline_layout: <B as Backend>::PipelineLayout,
     render_pass: <B as Backend>::RenderPass,
@@ -43,9 +50,12 @@ pub struct UiPipe {
     desc_set: <B as Backend>::DescriptorSet,
     framebuffers: Vec<<B as Backend>::Framebuffer>,
     locals: Buffer<Locals, B>,
+    sampler: Arc<Sampler<B>>,
+    glyph_cache: GlyphCache<'a>,
+    cache_tex: Image<B>,
 }
 
-impl Pipe for UiPipe {
+impl<'a> Pipe for UiPipe<'a> {
     type Locals = Locals;
     type Models = Model<UiVertex>;
     type ModelsLocals = ModelLocals;
@@ -63,25 +73,30 @@ impl Pipe for UiPipe {
     }
 }
 
-impl UiPipe {
+impl<'a> UiPipe<'a> {
     pub fn draw(&mut self, command_buffer: &mut command::CommandBuffer<B, hal::Graphics>, memory_types: &[hal::MemoryType], frame_id: usize, opal_ui: &mut OpalUi) {
         let Self {
             device,
             dimensions,
+            dpi_factor,
             pipeline_layout,
             render_pass,
             pipeline,
             desc_set,
             framebuffers,
             viewport,
+            glyph_cache,
+            cache_tex,
             ..
         } = self;
 
-        let ratio = {
-            let width = dimensions.0 as f32;
-            let height = dimensions.1 as f32;
-            width / height
-        };
+        if cache_tex.submitted == false {
+            cache_tex.submit(command_buffer);
+        }
+
+        let (width, height) = (dimensions.0 as f32, dimensions.1 as f32);
+
+        let ratio = width / height;
 
         let mut index = 0;
         let mut vertices = vec![];
@@ -149,6 +164,8 @@ impl UiPipe {
                             UiVertex {
                                 position: [vx(x), vy(y)],
                                 color: color.to_fsa(),
+                                uv: [0.0, 0.0],
+                                mode: Mode::Geometry as u32,
                             }
                         };
 
@@ -186,6 +203,8 @@ impl UiPipe {
                             UiVertex {
                                 position: [vx(p[0]), vy(p[1])],
                                 color: color.into(),
+                                uv: [0.0, 0.0],
+                                mode: Mode::Geometry as u32,
                             }
                         };
 
@@ -216,6 +235,8 @@ impl UiPipe {
                             UiVertex {
                                 position: [vx(p[0]), vy(p[1])],
                                 color: c.into(),
+                                uv: [0.0, 0.0],
+                                mode: Mode::Geometry as u32,
                             }
                         };
 
@@ -228,6 +249,72 @@ impl UiPipe {
                             indices.push(index + 1);
                             indices.push(index + 2);
                             index += 3;
+                        }
+                    }
+                    render::PrimitiveKind::Text { color, text, font_id } => {
+                        if current_state != UiState::Plain {
+                            finish_state(&mut vertices, &mut indices)
+                                .map(|m| ui.push(m));
+                            index = 0;
+                            current_state = UiState::Plain;
+                        }
+
+                        let positioned_glyphs = text.positioned_glyphs(*dpi_factor);
+
+                        for glyph in positioned_glyphs {
+                            glyph_cache.queue_glyph(font_id.index(), glyph.clone());
+                        }
+
+                        glyph_cache.cache_queued(|rect, data| {
+                            let offset = [rect.min.x as usize, rect.min.y as usize];
+                            let size = [rect.width() as usize, rect.height() as usize];
+
+                            let new_data = data.iter().map(|x| [255, 255, 255, *x]).collect::<Vec<_>>();
+
+                            cache_tex.update(offset, size, &new_data[..], device.clone());
+                            cache_tex.submit(command_buffer);
+                        }).unwrap();
+
+                        let color = color.to_fsa();
+                        let cache_id = font_id.index();
+                        let origin = rt::point(0.0, 0.0);
+
+                        let to_gl_rect = |screen_rect: rt::Rect<i32>| rt::Rect {
+                            min: origin + (rt::vector(
+                                    screen_rect.min.x as f32 / width - 0.5,
+                                    screen_rect.min.y as f32 / height - 0.5)
+                                ) * 2.0,
+                            max: origin + (rt::vector(
+                                    screen_rect.max.x as f32 / width - 0.5,
+                                    screen_rect.max.y as f32 / height - 0.5)
+                                ) * 2.0,
+                        };
+
+                        for g in positioned_glyphs {
+                            if let Ok(Some((uv_rect, screen_rect))) = glyph_cache.rect_for(cache_id, g) {
+                                let gl_rect = to_gl_rect(screen_rect);
+                                let v = |p, t| UiVertex {
+                                    position: p,
+                                    color: color.into(),
+                                    uv: t,
+                                    mode: Mode::Text as u32,
+                                };
+
+                                vertices.push(v([gl_rect.min.x, gl_rect.max.y], [uv_rect.min.x, uv_rect.max.y]));
+                                vertices.push(v([gl_rect.min.x, gl_rect.min.y], [uv_rect.min.x, uv_rect.min.y]));
+                                vertices.push(v([gl_rect.max.x, gl_rect.min.y], [uv_rect.max.x, uv_rect.min.y]));
+                                vertices.push(v([gl_rect.max.x, gl_rect.min.y], [uv_rect.max.x, uv_rect.min.y]));
+                                vertices.push(v([gl_rect.max.x, gl_rect.max.y], [uv_rect.max.x, uv_rect.max.y]));
+                                vertices.push(v([gl_rect.min.x, gl_rect.max.y], [uv_rect.min.x, uv_rect.max.y]));
+
+                                indices.push(index);
+                                indices.push(index + 1);
+                                indices.push(index + 2);
+                                indices.push(index + 3);
+                                indices.push(index + 4);
+                                indices.push(index + 5);
+                                index += 6;
+                            }
                         }
                     }
                     _ => {
@@ -295,6 +382,7 @@ impl UiPipe {
         dimensions: (u32, u32),
         dpi_factor: f32,
         device: Arc<Mutex<back::Device>>,
+        limits: &hal::Limits,
         memory_types: &[hal::MemoryType],
         surface_format: f::Format,
         _depth_format: Option<f::Format>,
@@ -303,7 +391,10 @@ impl UiPipe {
 
         let set_layout = {
             let device = device.lock().unwrap();
-            device.create_descriptor_set_layout(&[])
+            device.create_descriptor_set_layout(&Image::<B>::descriptor_set_binding(
+                ShaderStageFlags::FRAGMENT,
+                0,
+            )[..])
         };
 
         let pipeline_layout = {
@@ -409,7 +500,7 @@ impl UiPipe {
         let mut desc_pool = {
             let device = device.lock().unwrap();
 
-            device.create_descriptor_pool(1, &[])
+            device.create_descriptor_pool(1, &Image::<B>::descriptor_range()[..])
         };
 
         let desc_set = desc_pool.allocate_set(&set_layout);
@@ -446,9 +537,41 @@ impl UiPipe {
             depth: 0.0 .. 1.0,
         };
 
+        let sampler = {
+            let device = device.lock().unwrap();
+            device.create_sampler(i::SamplerInfo::new(
+                i::Filter::Linear,
+                i::WrapMode::Clamp,
+            ))
+        };
+        let sampler = Arc::new(Sampler::new(sampler));
+
+        let (glyph_cache, cache_tex) = {
+            let width = (width as f32 * dpi_factor) as u32;
+            let height = (height as f32 * dpi_factor) as u32;
+
+            const SCALE_TOLERANCE: f32 = 0.1;
+            const POSITION_TOLERANCE: f32 = 0.1;
+
+            let glyph_cache = GlyphCache::new(width, height, SCALE_TOLERANCE, POSITION_TOLERANCE);
+
+            let data = vec![[0; 4]; (width * height) as usize];
+
+            let (_, image) = Image::from_data(String::from("GlyphCache"), width, height, &data, limits, device.clone(), memory_types, sampler.clone()).unwrap();
+
+            (glyph_cache, image)
+        };
+
+        {
+            let device = device.lock().unwrap();
+
+            device.write_descriptor_sets(cache_tex.descriptor_set(0, &desc_set));
+        }
+
         Ok(Self {
             dimensions,
             device,
+            dpi_factor,
             viewport,
             pipeline_layout,
             render_pass,
@@ -456,6 +579,9 @@ impl UiPipe {
             desc_set,
             framebuffers,
             locals,
+            sampler,
+            glyph_cache,
+            cache_tex,
         })
     }
 }

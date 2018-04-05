@@ -1,6 +1,4 @@
 use std::{
-    fs,
-    io::Cursor,
     marker::PhantomData,
     path::PathBuf,
     sync::{ Arc, Mutex },
@@ -45,10 +43,12 @@ pub struct ImageKey(pub String);
 
 pub struct Image<B: Backend> {
     row_pitch: u32,
+    row_alignment_mask: u32,
     stride: u32,
     dimensions: (u32, u32),
     image: <B as Backend>::Image,
     image_upload_buffer: <B as Backend>::Buffer,
+    image_upload_memory: <B as Backend>::Memory,
     pub sampler: Arc<Sampler<B>>,
     pub srv: <B as Backend>::ImageView,
     pub submitted: bool,
@@ -107,6 +107,106 @@ impl<B: Backend> Image<B> {
         ]
     }
 
+    pub fn update(&mut self, offset: [usize; 2], size: [usize; 2], image_data: &[[u8; 4]], device: Arc<Mutex<B::Device>>) -> Result<(), Error> {
+        let device = device.lock().unwrap();
+        let (width, height) = self.dimensions;
+        let row_pitch = self.row_pitch;
+        let upload_size = (height * row_pitch) as u64;
+
+        // copy image data into staging buffer
+        {
+            let mut data = device.acquire_mapping_writer::<u8>(&self.image_upload_memory, 0..upload_size)?;
+            for y in 0..size[1] as usize {
+                let x = size[0];
+                let dest_base = y * row_pitch as usize;
+                let dest_base = dest_base + ((offset[0] + offset[1]) * 4);
+
+                let row = &(*image_data)[y * x .. (y + 1) * x];
+                let row = row.iter().flat_map(|r| r).map(|r| *r).collect::<Vec<_>>();
+
+                data[dest_base .. dest_base + row.len()].copy_from_slice(&row[..]);
+            }
+
+            device.release_mapping_writer(data);
+        }
+
+        self.submitted = false;
+
+        Ok(())
+    }
+
+    pub fn from_data(key: String, width: u32, height: u32, image_data: &[[u8; 4]], limits: &hal::Limits, device: Arc<Mutex<B::Device>>, memory_types: &[hal::MemoryType], sampler: Arc<Sampler<B>>) -> Result<(ImageKey, Self), Error> {
+        let device = device.lock().unwrap();
+
+        let kind = i::Kind::D2(width as i::Size, height as i::Size, 1, 1);
+        let row_alignment_mask = limits.min_buffer_copy_pitch_alignment as u32 - 1;
+        let image_stride = 4_usize;
+        let row_pitch = (width * image_stride as u32 + row_alignment_mask) & !row_alignment_mask;
+        let upload_size = (height * row_pitch) as u64;
+
+        let image_buffer_unbound = device.create_buffer(upload_size, buffer::Usage::TRANSFER_SRC)?;
+        let image_mem_reqs = device.get_buffer_requirements(&image_buffer_unbound);
+        let upload_type = memory_types
+            .iter()
+            .enumerate()
+            .position(|(id, mem_type)| {
+                image_mem_reqs.type_mask & (1 << id) != 0 &&
+                mem_type.properties.contains(m::Properties::CPU_VISIBLE)
+            })
+            .unwrap()
+            .into();
+        let image_upload_memory = device.allocate_memory(upload_type, image_mem_reqs.size)?;
+        let image_upload_buffer = device.bind_buffer_memory(&image_upload_memory, 0, image_buffer_unbound)?;
+
+        // copy image data into staging buffer
+        {
+            let mut data = device.acquire_mapping_writer::<u8>(&image_upload_memory, 0..upload_size)?;
+            for y in 0..height as usize {
+                let row = &(*image_data)[y * (width as usize) .. (y + 1) * (width as usize)];
+                let row = row.iter().flat_map(|r| r).map(|r| *r).collect::<Vec<_>>();
+                let dest_base = y * row_pitch as usize;
+                data[dest_base .. dest_base + row.len()].copy_from_slice(&row[..]);
+            }
+            device.release_mapping_writer(data);
+        }
+
+        // TODO: usage
+        let image_unbound = device.create_image(
+            kind,
+            1,
+            ColorFormat::SELF,
+            i::Usage::TRANSFER_DST | i::Usage::SAMPLED,
+            i::StorageFlags::empty(),
+        )?;
+        let image_req = device.get_image_requirements(&image_unbound);
+        let device_type = memory_types
+            .iter()
+            .enumerate()
+            .position(|(id, memory_type)| image_req.type_mask & (1 << id) != 0 && memory_type.properties.contains(m::Properties::DEVICE_LOCAL))
+            .unwrap().into();
+        let image_memory = device.allocate_memory(device_type, image_req.size)?;
+        let image = device.bind_image_memory(&image_memory, 0, image_unbound)?;
+        let srv = device.create_image_view(&image, i::ViewKind::D2, ColorFormat::SELF, Swizzle::NO, renderer::COLOR_RANGE.clone())?;
+
+        let image = Self {
+            row_pitch,
+            row_alignment_mask,
+            stride: image_stride as u32,
+            dimensions: (width, height),
+            image,
+            image_upload_buffer,
+            image_upload_memory,
+            sampler,
+            srv,
+            submitted: false,
+            _phantom: PhantomData,
+        };
+
+        let key = ImageKey(key);
+
+        Ok((key, image))
+    }
+
     pub fn blank(limits: &hal::Limits, device: Arc<Mutex<B::Device>>, memory_types: &[hal::MemoryType], sampler: Arc<Sampler<B>>) -> Result<(ImageKey, Self), Error> {
         let device = device.lock().unwrap();
 
@@ -158,10 +258,12 @@ impl<B: Backend> Image<B> {
 
         let image = Self {
             row_pitch,
+            row_alignment_mask,
             stride: image_stride as u32,
             dimensions: (width, height),
             image,
             image_upload_buffer,
+            image_upload_memory,
             sampler,
             srv,
             submitted: false,
@@ -173,14 +275,13 @@ impl<B: Backend> Image<B> {
         Ok((key, image))
     }
 
-    pub fn new<P>(filename: P, format: image::ImageFormat, limits: &hal::Limits, device: Arc<Mutex<B::Device>>, memory_types: &[hal::MemoryType], sampler: Arc<Sampler<B>>) -> Result<(ImageKey, Self), Error>
+    pub fn new<P>(filename: P, limits: &hal::Limits, device: Arc<Mutex<B::Device>>, memory_types: &[hal::MemoryType], sampler: Arc<Sampler<B>>) -> Result<(ImageKey, Self), Error>
         where P: Into<PathBuf> + Into<String> + Clone
     {
         let device = device.lock().unwrap();
 
         let path: PathBuf = filename.clone().into();
-        let file = fs::read(path)?;
-        let img = image::load(Cursor::new(&file[..]), format)?.to_rgba();
+        let img = image::open(path)?.to_rgba();
         let (width, height) = img.dimensions();
         let kind = i::Kind::D2(width as i::Size, height as i::Size, 1, 1);
         let row_alignment_mask = limits.min_buffer_copy_pitch_alignment as u32 - 1;
@@ -233,10 +334,12 @@ impl<B: Backend> Image<B> {
 
         let image = Self {
             row_pitch,
+            row_alignment_mask,
             stride: image_stride as u32,
             dimensions: (width, height),
             image,
             image_upload_buffer,
+            image_upload_memory,
             sampler,
             srv,
             submitted: false,

@@ -1,4 +1,4 @@
-use std::{ ops::Drop, sync::{ Arc, Mutex } };
+use std::sync::{ Arc, Mutex };
 use cgmath::Vector3;
 use failure::Error;
 use specs::{ Entities, Fetch, FetchMut, ReadStorage, System, WriteStorage };
@@ -76,7 +76,7 @@ pub enum RenderError {
     FramebufferCreation,
 }
 
-pub struct Renderer {
+pub struct Renderer<'a> {
     command_pool: hal::CommandPool<B, hal::Graphics>,
     device: Arc<Mutex<back::Device>>,
     dimensions: (u32, u32),
@@ -89,7 +89,7 @@ pub struct Renderer {
     resources: RLock<Resources>,
     swap_chain: <B as Backend>::Swapchain,
     main_pipe: MainPipe,
-    ui_pipe: UiPipe,
+    ui_pipe: UiPipe<'a>,
     //
     _instance: back::Instance,
 }
@@ -103,7 +103,7 @@ fn choose_adapters(mut adapters: Vec<Adapter<B>>) -> Result<Adapter<B>, Error> {
     Ok(adapters.remove(0))
 }
 
-impl Renderer {
+impl<'a> Renderer<'a> {
     pub fn new(config: Config, resources: RLock<Resources>, window: &Window) -> Result<Self, Error> {
         let (width, height) = window.get_inner_size().ok_or(RenderError::WindowSize)?;
         let dpi_factor = window.hidpi_factor();
@@ -173,6 +173,7 @@ impl Renderer {
             (width, height),
             dpi_factor,
             device.clone(),
+            &limits,
             &memory_types[..],
             surface_format,
             None,
@@ -197,9 +198,7 @@ impl Renderer {
     }
 
     pub fn load_image(&mut self, key: &ImageKey, sampler: Arc<Sampler<B>>) -> (ImageKey, Image<B>) {
-        let format = ::image::ImageFormat::PNG;
-
-        Image::new(key.0.clone(), format, &self.limits, self.device.clone(), &self.memory_types[..], sampler).unwrap()
+        Image::new(key.0.clone(), &self.limits, self.device.clone(), &self.memory_types[..], sampler).unwrap()
     }
 
     pub fn load_model(&mut self, key: &mut ModelKey) -> RLock<Model> {
@@ -216,13 +215,7 @@ impl Renderer {
     }
 }
 
-impl Drop for Renderer {
-    fn drop(&mut self) {
-
-    }
-}
-
-impl<'a> System<'a> for Renderer {
+impl<'a, 'b> System<'a> for Renderer<'b> {
     type SystemData = (
         Entities<'a>,
         WriteStorage<'a, ModelKey>, ReadStorage<'a, MaterialDesc>, ReadStorage<'a, ModelData>,
