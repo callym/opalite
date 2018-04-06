@@ -31,6 +31,10 @@ impl Vec3 {
     pub fn z(&self) -> f64 {
         self.0.z
     }
+
+    pub fn to_string(&self) -> String {
+        format!("({}, {}, {})", self.x(), self.y(), self.z())
+    }
 }
 
 pub fn register_opalite_api(vm: &gluon::Thread) {
@@ -43,6 +47,7 @@ pub fn register_opalite_api(vm: &gluon::Thread) {
                 x => primitive!(1 Vec3::x),
                 y => primitive!(1 Vec3::y),
                 z => primitive!(1 Vec3::z),
+                to_string => primitive!(1 Vec3::to_string),
             ),
         ))
     });

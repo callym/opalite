@@ -9,6 +9,7 @@ use crate::{
     InputEventHandler,
 };
 use crate::gluon_api::conrod::GluonWidget;
+use conrod::{ Positionable, Colorable };
 
 pub struct WindowClosed(pub(super) bool);
 
@@ -145,13 +146,19 @@ impl<'a, 'b> Opal<'a, 'b> {
                         GluonWidget::BorderedRectangle { value } => value.0.set(id, ui),
                         GluonWidget::Rectangle { value } => value.0.set(id, ui),
                         GluonWidget::Oval { value } => value.0.set(id, ui),
+                        GluonWidget::Text { value } => {
+                            let mut text = conrod::widget::Text::new(&value.1);
+                            text.common = value.0.common;
+                            text.style = value.0.style;
+                            text.set(id, ui);
+                        },
                     };
                 }
             }
 
             {
                 let mut opal_ui = world.write_resource::<OpalUi>();
-                *opal_ui = OpalUi(ui.draw_if_changed().map(|p| p.owned()));
+                *opal_ui = OpalUi(Some(ui.draw().owned()));
             }
 
             dispatcher.dispatch(&mut world.res);

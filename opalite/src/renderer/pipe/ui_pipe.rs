@@ -1,6 +1,7 @@
 use std::{ mem, sync::{ Arc, Mutex } };
 use cgmath::Vector3;
 use conrod::{ self, render::{ self, PrimitiveWalker }, text::{ rt, GlyphCache } };
+use rusttype;
 use failure::Error;
 use crate::{ Config, OpalUi, Resources, RLock };
 use crate::renderer::{ self, Buffer, BufferData, Image, Model, RenderError, PushConstant, Sampler, ShaderKey, Shader };
@@ -124,7 +125,7 @@ impl<'a> UiPipe<'a> {
             }
         };
 
-        let finish_state = |vertices: &mut Vec<UiVertex>, indices: &mut Vec<u32>| {
+        let finish_state = |vertices: &mut Vec<UiVertex>, indices: &mut Vec<u32>, index: &mut u32| {
             if vertices.is_empty() || indices.is_empty() {
                 return None;
             }
@@ -137,6 +138,7 @@ impl<'a> UiPipe<'a> {
 
             vertices.clear();
             indices.clear();
+            *index = 0;
 
             Some(Model { vertex_buffer, index_buffer })
         };
@@ -153,9 +155,8 @@ impl<'a> UiPipe<'a> {
                 match kind {
                     render::PrimitiveKind::Rectangle { color } => {
                         if current_state != UiState::Plain {
-                            finish_state(&mut vertices, &mut indices)
+                            finish_state(&mut vertices, &mut indices, &mut index)
                                 .map(|m| ui.push(m));
-                            index = 0;
                             current_state = UiState::Plain;
                         }
 
@@ -193,9 +194,8 @@ impl<'a> UiPipe<'a> {
                         }
 
                         if current_state != UiState::Plain {
-                            finish_state(&mut vertices, &mut indices)
+                            finish_state(&mut vertices, &mut indices, &mut index)
                                 .map(|m| ui.push(m));
-                            index = 0;
                             current_state = UiState::Plain;
                         }
 
@@ -225,9 +225,8 @@ impl<'a> UiPipe<'a> {
                         }
 
                         if current_state != UiState::Plain {
-                            finish_state(&mut vertices, &mut indices)
+                            finish_state(&mut vertices, &mut indices, &mut index)
                                 .map(|m| ui.push(m));
-                            index = 0;
                             current_state = UiState::Plain;
                         }
 
@@ -252,11 +251,10 @@ impl<'a> UiPipe<'a> {
                         }
                     }
                     render::PrimitiveKind::Text { color, text, font_id } => {
-                        if current_state != UiState::Plain {
-                            finish_state(&mut vertices, &mut indices)
+                        if current_state != UiState::Text {
+                            finish_state(&mut vertices, &mut indices, &mut index)
                                 .map(|m| ui.push(m));
-                            index = 0;
-                            current_state = UiState::Plain;
+                            current_state = UiState::Text;
                         }
 
                         let positioned_glyphs = text.positioned_glyphs(*dpi_factor);
@@ -328,9 +326,8 @@ impl<'a> UiPipe<'a> {
         }
 
         if current_state != UiState::None {
-            finish_state(&mut vertices, &mut indices)
+            finish_state(&mut vertices, &mut indices, &mut index)
                 .map(|m| ui.push(m));
-            index = 0;
         }
 
         if ui.is_empty() == false {
@@ -547,13 +544,22 @@ impl<'a> UiPipe<'a> {
         let sampler = Arc::new(Sampler::new(sampler));
 
         let (glyph_cache, cache_tex) = {
-            let width = (width as f32 * dpi_factor) as u32;
-            let height = (height as f32 * dpi_factor) as u32;
+            const CACHE_SCALE: u32 = 2;
+            let width = 256 * (dpi_factor as u32) * CACHE_SCALE;
+            let height = 256 * (dpi_factor as u32) * CACHE_SCALE;
 
             const SCALE_TOLERANCE: f32 = 0.1;
             const POSITION_TOLERANCE: f32 = 0.1;
 
-            let glyph_cache = GlyphCache::new(width, height, SCALE_TOLERANCE, POSITION_TOLERANCE);
+            let glyph_cache = rusttype::gpu_cache::CacheBuilder {
+                width,
+                height,
+                scale_tolerance: SCALE_TOLERANCE,
+                position_tolerance: POSITION_TOLERANCE,
+                pad_glyphs: true,
+            }.build();
+
+//            let glyph_cache = GlyphCache::new(width, height, SCALE_TOLERANCE, POSITION_TOLERANCE);
 
             let data = vec![[0; 4]; (width * height) as usize];
 

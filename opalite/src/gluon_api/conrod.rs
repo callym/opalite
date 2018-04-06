@@ -127,6 +127,7 @@ macro_rules! module {
             $( $widget_b { value: $widget_b }, )*
             $( $widget_c { value: $widget_c }, )*
             $( $widget { value: $widget }, )*
+            Text { value: Text },
         }
 
         impl GluonWidget {
@@ -135,6 +136,7 @@ macro_rules! module {
                     $( GluonWidget::$widget_b { value } => value.name(), )*
                     $( GluonWidget::$widget_c { value } => value.name(), )*
                     $( GluonWidget::$widget { value } => value.name(), )*
+                    GluonWidget::Text { value } => value.name(),
                 }
             }
         }
@@ -182,6 +184,7 @@ macro_rules! module {
             $(
                 vm.register_type::<$widget>(stringify!($widget), &[]).unwrap();
             )*
+            vm.register_type::<Text>("Text", &[]).unwrap();
             vm.register_type::<GluonWidget>("GluonWidget", &[]).unwrap();
 
             gluon::import::add_extern_module(vm, "conrod", |vm: &gluon::Thread| {
@@ -218,6 +221,15 @@ macro_rules! module {
                         build => primitive!(1 $widget::build)
                     ),)*
                     $($fun_alone => primitive!($num_alone $fun_alone))*,
+                    text => record!(
+                        new => primitive!(2 Text::new),
+                        x => primitive!(2 Text::x),
+                        y => primitive!(2 Text::y),
+                        x_y => primitive!(3 Text::x_y),
+                        color => primitive!(2 Text::color),
+                        font_size => primitive!(2 Text::font_size),
+                        build => primitive!(1 Text::build)
+                    ),
                 ))
             });
         }
@@ -234,6 +246,63 @@ fn rgba(r: f64, g: f64, b: f64, a: f64) -> Color {
 #[derive(Debug, Clone)]
 pub struct Oval(pub(crate) widget::Oval<widget::oval::Full>, pub(crate) String);
 
+colorable_impl!(Oval);
+
+#[derive(Debug, Clone)]
+pub struct Text(pub(crate) widget::Text<'static>, pub(crate) String, pub(crate) String);
+
+impl Text {
+    fn new(text: String, name: String) -> Self {
+        Text(widget::Text::new(""), text, name)
+    }
+
+    pub fn name(&self) -> &str {
+        &self.2
+    }
+
+    fn build(widget: Self) -> GluonWidget {
+        widget.into()
+    }
+
+    fn color(color: Color, widget: Self) -> Self {
+        let Text(widget, text, name) = widget;
+        let widget = widget.color(color.0);
+        Text(widget, text, name)
+    }
+
+    fn x(x: f64, widget: Self) -> Self {
+        let Text(widget, text, name) = widget;
+        let widget = widget.x(x);
+        Text(widget, text, name)
+    }
+
+    fn y(y: f64, widget: Self) -> Self {
+        let Text(widget, text, name) = widget;
+        let widget = widget.y(y);
+        Text(widget, text, name)
+    }
+
+    fn x_y(x: f64, y: f64, widget: Self) -> Self {
+        let Text(widget, text, name) = widget;
+        let widget = widget.x_y(x, y);
+        Text(widget, text, name)
+    }
+
+    fn font_size(size: u32, widget: Self) -> Self {
+        let Text(widget, text, name) = widget;
+        let widget = widget.font_size(size);
+        Text(widget, text, name)
+    }
+}
+
+impl Into<GluonWidget> for Text {
+    fn into(self) -> GluonWidget {
+        GluonWidget::Text { value: self }
+    }
+}
+
+register_gluon!(Text);
+
 module!(
     register: [ Color ],
     borderable: [
@@ -249,7 +318,8 @@ module!(
     other: [
         [Oval: oval] -> {
             new: 3,
-        }
+            color: 2,
+        },
     ],
     rgba: 4,
 );
