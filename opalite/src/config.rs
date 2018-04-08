@@ -12,6 +12,7 @@ pub struct Config {
     pub map_dimensions: (i32, i32, i32),
     pub resources: Vec<PathBuf>,
     pub fonts: Vec<PathBuf>,
+    pub font_resolution: u32,
 }
 
 impl Config {
@@ -54,6 +55,10 @@ impl Config {
             self.fonts.extend(fonts);
         }
 
+        if let Some(font_resolution) = other.font_resolution {
+            self.font_resolution = font_resolution;
+        }
+
         self
     }
 }
@@ -66,6 +71,7 @@ pub struct ConfigBuilder {
     pub map_dimensions: Option<(i32, i32, i32)>,
     pub resources: Option<Vec<PathBuf>>,
     pub fonts: Option<Vec<PathBuf>>,
+    pub font_resolution: Option<u32>,
 }
 
 impl ConfigBuilder {

@@ -269,8 +269,7 @@ impl<'a> UiPipe<'a> {
 
                             let new_data = data.iter().map(|x| [255, 255, 255, *x]).collect::<Vec<_>>();
 
-                            cache_tex.update(offset, size, &new_data[..], device.clone());
-                            cache_tex.submit(command_buffer);
+                            cache_tex.update(offset, size, &new_data[..], device.clone()).unwrap();
                         }).unwrap();
 
                         let color = color.to_fsa();
@@ -329,6 +328,8 @@ impl<'a> UiPipe<'a> {
             finish_state(&mut vertices, &mut indices, &mut index)
                 .map(|m| ui.push(m));
         }
+
+        cache_tex.submit(command_buffer);
 
         if ui.is_empty() == false {
             command_buffer.set_viewports(&[viewport.clone()]);
@@ -544,12 +545,11 @@ impl<'a> UiPipe<'a> {
         let sampler = Arc::new(Sampler::new(sampler));
 
         let (glyph_cache, cache_tex) = {
-            const CACHE_SCALE: u32 = 2;
-            let width = 256 * (dpi_factor as u32) * CACHE_SCALE;
-            let height = 256 * (dpi_factor as u32) * CACHE_SCALE;
+            let width = config.font_resolution * (dpi_factor as u32);
+            let height = config.font_resolution * (dpi_factor as u32);
 
             const SCALE_TOLERANCE: f32 = 0.1;
-            const POSITION_TOLERANCE: f32 = 0.1;
+            const POSITION_TOLERANCE: f32 = 2.0;
 
             let glyph_cache = rusttype::gpu_cache::CacheBuilder {
                 width,
@@ -558,8 +558,6 @@ impl<'a> UiPipe<'a> {
                 position_tolerance: POSITION_TOLERANCE,
                 pad_glyphs: true,
             }.build();
-
-//            let glyph_cache = GlyphCache::new(width, height, SCALE_TOLERANCE, POSITION_TOLERANCE);
 
             let data = vec![[0; 4]; (width * height) as usize];
 

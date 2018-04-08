@@ -9,4 +9,5 @@
     map_dimensions: (50, 50, 10),
     resources: [],
     fonts: [],
+    font_resolution: 2048,
 )

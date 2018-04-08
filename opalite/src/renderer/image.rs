@@ -118,8 +118,8 @@ impl<B: Backend> Image<B> {
             let mut data = device.acquire_mapping_writer::<u8>(&self.image_upload_memory, 0..upload_size)?;
             for y in 0..size[1] as usize {
                 let x = size[0];
-                let dest_base = y * row_pitch as usize;
-                let dest_base = dest_base + ((offset[0] + offset[1]) * 4);
+                let dest_base = (y + offset[1]) * row_pitch as usize;
+                let dest_base = dest_base + (offset[0] * 4);
 
                 let row = &(*image_data)[y * x .. (y + 1) * x];
                 let row = row.iter().flat_map(|r| r).map(|r| *r).collect::<Vec<_>>();
