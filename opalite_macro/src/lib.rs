@@ -49,15 +49,15 @@ fn field_to_format(field: Tokens) -> Tokens {
         return quote!(#pre::R32Float);
     }
 
-    if field == quote!([f32; 2]) {
+    if field == quote!([f32; 2]) || field == quote!(Vector2<f32>) {
         return quote!(#pre::Rg32Float);
     }
 
-    if field == quote!([f32; 3]) {
+    if field == quote!([f32; 3]) || field == quote!(Vector3<f32>) {
         return quote!(#pre::Rgb32Float);
     }
 
-    if field == quote!([f32; 4]) {
+    if field == quote!([f32; 4]) || field == quote!(Vector4<f32>) {
         return quote!(#pre::Rgba32Float);
     }
 

@@ -123,8 +123,8 @@ impl HexGrid {
 
     fn generate_triangle(base: Vertex, offsets: [Vector3<f32>; 3]) -> [Vertex; 3] {
         let map = |o| {
-            let mut base = base;
-            base.change_position(o);
+            let mut base = base.clone();
+            base.position += o;
             base
         };
 
@@ -157,8 +157,7 @@ impl HexGrid {
 
         let position = Vector3::new(xf, 0.0, zf);
         let center = Vertex {
-            position: position.into(),
-            color: [1.0, 1.0, 1.0],
+            position,
             .. Default::default()
         };
 
@@ -209,7 +208,7 @@ pub struct HexCell {
 
 impl ProceduralModel for HexCell {
     fn load(&mut self, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Model> {
-        let vertices = model::make_quad([1.0, 1.0, 1.0]).to_vec();
+        let vertices = model::make_quad([1.0, 1.0, 1.0, 1.0]).to_vec();
 
         let mut vertex_buffer = Buffer::<Vertex, B>::new(device.clone(), vertices.len() as u64, hal::buffer::Usage::VERTEX, &memory_types).unwrap();
         vertex_buffer.write(&vertices[..]).unwrap();

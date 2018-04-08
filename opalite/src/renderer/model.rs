@@ -7,76 +7,31 @@ use std::{
 };
 use back::Backend as B;
 use hal::{ self, Backend };
-use cgmath::{ Matrix4, Vector3 };
+use cgmath::{ prelude::*, Matrix4, Vector2, Vector3, Vector4 };
 use uuid::Uuid;
 use crate::{ renderer::{ Buffer, BufferData }, RLock };
 
 #[derive(BufferData, Copy, Clone, Debug)]
 pub struct Vertex {
-    pub position: [f32; 3],
-    pub color: [f32; 3],
-    pub uv: [f32; 2],
+    pub position: Vector3<f32>,
+    pub color: Vector4<f32>,
+    pub uv: Vector2<f32>,
 }
 
 #[derive(BufferData, Copy, Clone, Debug)]
 pub struct UiVertex {
-    pub position: [f32; 2],
-    pub color: [f32; 4],
-    pub uv: [f32; 2],
+    pub position: Vector2<f32>,
+    pub color: Vector4<f32>,
+    pub uv: Vector2<f32>,
     pub mode: u32,
-}
-
-impl Vertex {
-    pub fn x(&self) -> f32 {
-        self.position[0]
-    }
-
-    pub fn y(&self) -> f32 {
-        self.position[1]
-    }
-
-    pub fn z(&self) -> f32 {
-        self.position[2]
-    }
-
-    pub fn set_color<P: Into<[f32; 3]>>(&mut self, val: P) {
-        self.color = val.into();
-    }
-
-    pub fn set_uv<P: Into<[f32; 2]>>(&mut self, val: P) {
-        self.uv = val.into();
-    }
-
-    pub fn set_position<P: Into<[f32; 3]>>(&mut self, val: P) {
-        self.position = val.into();
-    }
-
-    pub fn change_position<P: Into<[f32; 3]>>(&mut self, val: P) {
-        let val: [_; 3] = val.into();
-        self.position[0] += val[0];
-        self.position[1] += val[1];
-        self.position[2] += val[2];
-    }
-
-    pub fn set_x(&mut self, val: f32) {
-        self.position[0] = val;
-    }
-
-    pub fn set_y(&mut self, val: f32) {
-        self.position[1] = val;
-    }
-
-    pub fn set_z(&mut self, val: f32) {
-        self.position[2] = val;
-    }
 }
 
 impl Default for Vertex {
     fn default() -> Self {
         Self {
-            position: [0.0; 3],
-            color: [1.0, 1.0, 0.0],
-            uv: [0.0, 0.0],
+            position: Vector3::zero(),
+            color: Vector4::new(1.0, 1.0, 1.0, 1.0),
+            uv: Vector2::zero(),
         }
     }
 }
@@ -171,7 +126,7 @@ pub struct Model<V: BufferData = Vertex> {
 }
 
 impl Model {
-    pub(crate) fn quad(color: [f32; 3], device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Self> {
+    pub(crate) fn quad<C: Into<Vector4<f32>>>(color: C, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Self> {
         let vertices = make_quad(color).to_vec();
         let mut vertex_buffer = Buffer::<Vertex, B>::new(device.clone(), vertices.len() as u64, hal::buffer::Usage::VERTEX, &memory_types).unwrap();
         vertex_buffer.write(&vertices[..]).unwrap();
@@ -186,7 +141,7 @@ impl Model {
         })
     }
 
-    pub(crate) fn hex(color: [f32; 3], device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Self> {
+    pub(crate) fn hex<C: Into<Vector4<f32>>>(color: C, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Self> {
         let (vertices, indices) = make_hex(color);
 
         let mut vertex_buffer = Buffer::<Vertex, B>::new(device.clone(), vertices.len() as u64, hal::buffer::Usage::VERTEX, &memory_types).unwrap();
@@ -201,7 +156,7 @@ impl Model {
         })
     }
 
-    pub(crate) fn sphere(color: [f32; 3], device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Self> {
+    pub(crate) fn sphere<C: Into<Vector4<f32>>>(color: C, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Self> {
         let (vertices, indices) = make_sphere(color);
 
         let mut vertex_buffer = Buffer::<Vertex, B>::new(device.clone(), vertices.len() as u64, hal::buffer::Usage::VERTEX, &memory_types).unwrap();
@@ -217,17 +172,20 @@ impl Model {
     }
 }
 
-pub fn make_quad(color: [f32; 3]) -> [Vertex; 6] {[
-  Vertex { position: [ -0.5, 0.0, 0.5 ], color, uv: [0.0, 1.0], .. Default::default() },
-  Vertex { position: [  0.5, 0.0, 0.5 ], color, uv: [1.0, 1.0], .. Default::default() },
-  Vertex { position: [  0.5, 0.0,-0.5 ], color, uv: [1.0, 0.0], .. Default::default() },
+pub fn make_quad<C: Into<Vector4<f32>>>(color: C) -> [Vertex; 6] {
+    let color = color.into();
+    [
+    Vertex { position: Vector3::new(-0.5, 0.0, 0.5), color, uv: Vector2::new(0.0, 1.0), .. Default::default() },
+    Vertex { position: Vector3::new( 0.5, 0.0, 0.5), color, uv: Vector2::new(1.0, 1.0), .. Default::default() },
+    Vertex { position: Vector3::new( 0.5, 0.0,-0.5), color, uv: Vector2::new(1.0, 0.0), .. Default::default() },
 
-  Vertex { position: [ -0.5, 0.5, 0.5 ], color, uv: [0.0, 1.0], .. Default::default() },
-  Vertex { position: [  0.5, 0.0,-0.5 ], color, uv: [1.0, 0.0], .. Default::default() },
-  Vertex { position: [ -0.5, 0.0,-0.5 ], color, uv: [0.0, 0.0], .. Default::default() },
-]}
+    Vertex { position: Vector3::new(-0.5, 0.5, 0.5), color, uv: Vector2::new(0.0, 1.0), .. Default::default() },
+    Vertex { position: Vector3::new( 0.5, 0.0,-0.5), color, uv: Vector2::new(1.0, 0.0), .. Default::default() },
+    Vertex { position: Vector3::new(-0.5, 0.0,-0.5), color, uv: Vector2::new(0.0, 0.0), .. Default::default() },
+    ]
+}
 
-pub fn make_hex(color: [f32; 3]) -> ([Vertex; 7], [u32; 18]) {
+pub fn make_hex<C: Into<Vector4<f32>>>(color: C) -> ([Vertex; 7], [u32; 18]) {
     let start_angle = 0.5;
 
     let offset = |corner| {
@@ -235,19 +193,21 @@ pub fn make_hex(color: [f32; 3]) -> ([Vertex; 7], [u32; 18]) {
         (angle.cos(), angle.sin())
     };
 
+    let color: Vector4<_> = color.into();
+
     let mut arr: [Vertex; 7] = Default::default();
     for (i, v) in arr.iter_mut().enumerate() {
         v.color = color;
 
         if i == 0 {
-            v.set_x(0.0);
-            v.set_z(0.0);
+            v.position.x = 0.0;
+            v.position.z = 0.0;
             continue;
         }
 
-        let (x, y) = offset(i as f32);
-        v.set_x(x);
-        v.set_z(y);
+        let (x, z) = offset(i as f32);
+        v.position.x = x;
+        v.position.z = z;
     }
 
     let indices = [
@@ -262,7 +222,7 @@ pub fn make_hex(color: [f32; 3]) -> ([Vertex; 7], [u32; 18]) {
     (arr, indices)
 }
 
-pub fn make_sphere(color: [f32; 3]) -> (Vec<Vertex>, Vec<u32>) {
+pub fn make_sphere<C: Into<Vector4<f32>>>(color: C) -> (Vec<Vertex>, Vec<u32>) {
     let x = 0.525731112119133606;
     let z = 0.850650808352039932;
     let n = 0.0;
@@ -280,8 +240,9 @@ pub fn make_sphere(color: [f32; 3]) -> (Vec<Vertex>, Vec<u32>) {
         6, 1, 10, 9, 0, 11, 9, 11, 2, 9, 2, 5, 7, 2, 11,
     ];
 
+    let color: Vector4<_> = color.into();
     let vertices = icosahedron.iter().map(|v| Vertex {
-        position: *v,
+        position: (*v).into(),
         color,
         .. Default::default()
     }).collect();

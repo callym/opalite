@@ -163,9 +163,9 @@ impl<'a> UiPipe<'a> {
                         let (l, r, b, t) = rect.l_r_b_t();
                         let v = |x, y| {
                             UiVertex {
-                                position: [vx(x), vy(y)],
-                                color: color.to_fsa(),
-                                uv: [0.0, 0.0],
+                                position: [vx(x), vy(y)].into(),
+                                color: color.to_fsa().into(),
+                                uv: [0.0, 0.0].into(),
                                 mode: Mode::Geometry as u32,
                             }
                         };
@@ -200,10 +200,11 @@ impl<'a> UiPipe<'a> {
                         }
 
                         let v = |p: [f64; 2]| {
+                            let color: [f32; 4] = color.into();
                             UiVertex {
-                                position: [vx(p[0]), vy(p[1])],
+                                position: [vx(p[0]), vy(p[1])].into(),
                                 color: color.into(),
-                                uv: [0.0, 0.0],
+                                uv: [0.0, 0.0].into(),
                                 mode: Mode::Geometry as u32,
                             }
                         };
@@ -231,10 +232,11 @@ impl<'a> UiPipe<'a> {
                         }
 
                         let v = |(p, c): ([f64; 2], conrod::color::Rgba)| {
+                            let c: [f32; 4] = c.into();
                             UiVertex {
-                                position: [vx(p[0]), vy(p[1])],
+                                position: [vx(p[0]), vy(p[1])].into(),
                                 color: c.into(),
-                                uv: [0.0, 0.0],
+                                uv: [0.0, 0.0].into(),
                                 mode: Mode::Geometry as u32,
                             }
                         };
@@ -290,10 +292,11 @@ impl<'a> UiPipe<'a> {
                         for g in positioned_glyphs {
                             if let Ok(Some((uv_rect, screen_rect))) = glyph_cache.rect_for(cache_id, g) {
                                 let gl_rect = to_gl_rect(screen_rect);
-                                let v = |p, t| UiVertex {
-                                    position: p,
+                                let color: [f32; 4] = color.into();
+                                let v = |p: [f32; 2], t: [f32; 2]| UiVertex {
+                                    position: p.into(),
                                     color: color.into(),
-                                    uv: t,
+                                    uv: t.into(),
                                     mode: Mode::Text as u32,
                                 };
 
