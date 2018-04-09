@@ -93,7 +93,7 @@ impl<B: Backend> Image<B> {
                 binding: offset,
                 array_offset: 0,
                 descriptors: Some(
-                    pso::Descriptor::Image(&self.srv, i::ImageLayout::Undefined)
+                    pso::Descriptor::Image(&self.srv, i::Layout::Undefined)
                 ),
             },
             pso::DescriptorSetWrite {
@@ -175,6 +175,7 @@ impl<B: Backend> Image<B> {
             kind,
             1,
             ColorFormat::SELF,
+            i::Tiling::Optimal,
             i::Usage::TRANSFER_DST | i::Usage::SAMPLED,
             i::StorageFlags::empty(),
         )?;
@@ -243,6 +244,7 @@ impl<B: Backend> Image<B> {
             kind,
             1,
             ColorFormat::SELF,
+            i::Tiling::Optimal,
             i::Usage::TRANSFER_DST | i::Usage::SAMPLED,
             i::StorageFlags::empty(),
         )?;
@@ -319,6 +321,7 @@ impl<B: Backend> Image<B> {
             kind,
             1,
             ColorFormat::SELF,
+            i::Tiling::Optimal,
             i::Usage::TRANSFER_DST | i::Usage::SAMPLED,
             i::StorageFlags::empty(),
         )?;
@@ -358,8 +361,8 @@ impl<B: Backend> Image<B> {
         let (width, height) = dimensions;
 
         let image_barrier = m::Barrier::Image {
-            states: (i::Access::empty(), i::ImageLayout::Undefined) ..
-                    (i::Access::TRANSFER_WRITE, i::ImageLayout::TransferDstOptimal),
+            states: (i::Access::empty(), i::Layout::Undefined) ..
+                    (i::Access::TRANSFER_WRITE, i::Layout::TransferDstOptimal),
             target: image,
             range: renderer::COLOR_RANGE.clone(),
         };
@@ -373,7 +376,7 @@ impl<B: Backend> Image<B> {
         command_buffer.copy_buffer_to_image(
             &image_upload_buffer,
             &image,
-            i::ImageLayout::TransferDstOptimal,
+            i::Layout::TransferDstOptimal,
             &[command::BufferImageCopy {
                 buffer_offset: 0,
                 buffer_width: *row_pitch / *stride,
@@ -388,8 +391,8 @@ impl<B: Backend> Image<B> {
             }]);
 
         let image_barrier = m::Barrier::Image {
-            states: (i::Access::TRANSFER_WRITE, i::ImageLayout::TransferDstOptimal) ..
-                    (i::Access::SHADER_READ, i::ImageLayout::ShaderReadOnlyOptimal),
+            states: (i::Access::TRANSFER_WRITE, i::Layout::TransferDstOptimal) ..
+                    (i::Access::SHADER_READ, i::Layout::ShaderReadOnlyOptimal),
             target: image,
             range: renderer::COLOR_RANGE.clone(),
         };

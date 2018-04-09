@@ -41,7 +41,7 @@ pub struct Lights {
 pub struct MainPipe {
     _device: Arc<Mutex<back::Device>>,
     desc_set: <B as Backend>::DescriptorSet,
-    viewport: command::Viewport,
+    viewport: pso::Viewport,
     pipeline_layout: <B as Backend>::PipelineLayout,
     render_pass: <B as Backend>::RenderPass,
     pipeline: <B as Backend>::GraphicsPipeline,
@@ -230,19 +230,19 @@ impl MainPipe {
                 format: Some(surface_format),
                 ops: pass::AttachmentOps::new(pass::AttachmentLoadOp::Clear, pass::AttachmentStoreOp::Store),
                 stencil_ops: pass::AttachmentOps::DONT_CARE,
-                layouts: i::ImageLayout::Undefined .. i::ImageLayout::Present,
+                layouts: i::Layout::Undefined .. i::Layout::Present,
             };
 
             let depth_attachment = pass::Attachment {
                 format: Some(depth_format),
                 ops: pass::AttachmentOps::new(pass::AttachmentLoadOp::Clear, pass::AttachmentStoreOp::DontCare),
                 stencil_ops: pass::AttachmentOps::DONT_CARE,
-                layouts: i::ImageLayout::Undefined .. i::ImageLayout::DepthStencilAttachmentOptimal,
+                layouts: i::Layout::Undefined .. i::Layout::DepthStencilAttachmentOptimal,
             };
 
             let subpass = pass::SubpassDesc {
-                colors: &[(0, i::ImageLayout::ColorAttachmentOptimal)],
-                depth_stencil: Some(&(1, i::ImageLayout::DepthStencilAttachmentOptimal)),
+                colors: &[(0, i::Layout::ColorAttachmentOptimal)],
+                depth_stencil: Some(&(1, i::Layout::DepthStencilAttachmentOptimal)),
                 inputs: &[],
                 preserves: &[],
             };
@@ -342,7 +342,7 @@ impl MainPipe {
 
         let depth_view = {
             let device = device.lock().unwrap();
-            let depth_image = device.create_image(i::Kind::D2(width, height, 1, 1), 1, depth_format, i::Usage::DEPTH_STENCIL_ATTACHMENT, i::StorageFlags::empty())?;
+            let depth_image = device.create_image(i::Kind::D2(width, height, 1, 1), 1, depth_format, i::Tiling::Optimal, i::Usage::DEPTH_STENCIL_ATTACHMENT, i::StorageFlags::empty())?;
             let depth_memory_requirements = device.get_image_requirements(&depth_image);
             let memory_type = memory_types.iter().enumerate()
                 .position(|(id, mem_type)| {
@@ -392,8 +392,8 @@ impl MainPipe {
             );
         }
 
-        let viewport = command::Viewport {
-            rect: command::Rect {
+        let viewport = pso::Viewport {
+            rect: pso::Rect {
                 x: 0,
                 y: 0,
                 w: width as _,

@@ -138,7 +138,8 @@ impl<'a> Renderer<'a> {
 
         let swap_config = SwapchainConfig::new()
             .with_color(surface_format)
-            .with_depth_stencil(depth_format);
+            .with_depth_stencil(depth_format)
+            .with_image_usage(i::Usage::COLOR_ATTACHMENT);
 
         let (swap_chain, backbuffer) = {
             let device = device.lock().unwrap();

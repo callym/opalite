@@ -44,7 +44,7 @@ pub struct UiPipe<'a> {
     dimensions: (u32, u32),
     device: Arc<Mutex<back::Device>>,
     dpi_factor: f32,
-    viewport: command::Viewport,
+    viewport: pso::Viewport,
     pipeline_layout: <B as Backend>::PipelineLayout,
     render_pass: <B as Backend>::RenderPass,
     pipeline: <B as Backend>::GraphicsPipeline,
@@ -410,11 +410,11 @@ impl<'a> UiPipe<'a> {
                 format: Some(surface_format),
                 ops: pass::AttachmentOps::new(pass::AttachmentLoadOp::Load, pass::AttachmentStoreOp::Store),
                 stencil_ops: pass::AttachmentOps::DONT_CARE,
-                layouts: i::ImageLayout::Undefined .. i::ImageLayout::Present,
+                layouts: i::Layout::Undefined .. i::Layout::Present,
             };
 
             let subpass = pass::SubpassDesc {
-                colors: &[(0, i::ImageLayout::ColorAttachmentOptimal)],
+                colors: &[(0, i::Layout::ColorAttachmentOptimal)],
                 depth_stencil: None,
                 inputs: &[],
                 preserves: &[],
@@ -517,8 +517,8 @@ impl<'a> UiPipe<'a> {
 
         let locals = Buffer::<<Self as Pipe>::Locals, B>::new(device.clone(), 1, hal::buffer::Usage::UNIFORM, &memory_types).unwrap();
 
-        let viewport = command::Viewport {
-            rect: command::Rect {
+        let viewport = pso::Viewport {
+            rect: pso::Rect {
                 x: 0,
                 y: 0,
                 w: width as _,

@@ -30,12 +30,12 @@ zip = "0.3"
 
 [dependencies.gfx-hal]
 git = "https://github.com/gfx-rs/gfx"
-rev = "b75b8f5"
+rev = "0c214ce"
 
 [dependencies.gfx-backend-dx12]
 git = "https://github.com/gfx-rs/gfx"
-rev = "b75b8f5"
+rev = "0c214ce"
 
 [dependencies.gfx-backend-vulkan]
 git = "https://github.com/gfx-rs/gfx"
-rev = "b75b8f5"
+rev = "0c214ce"
