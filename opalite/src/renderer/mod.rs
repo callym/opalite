@@ -31,6 +31,9 @@ pub mod conv;
 mod image;
 pub use self::image::{ Image, ImageKey, Sampler };
 
+mod light;
+pub use self::light::{ LightType, Light, LightData };
+
 mod material;
 pub use self::material::{ MaterialDesc, Material, SurfaceType };
 
@@ -163,7 +166,7 @@ impl<'a> Renderer<'a> {
         let (key, image) = Image::blank(&limits, device.clone(), &memory_types[..], main_pipe.sampler()).unwrap();
         main_pipe.images_mut().insert(key, image);
 
-        let material = Material::new(MaterialDesc::fallback(), main_pipe.images(), main_pipe.locals(), device.clone(), main_pipe.set_layout());
+        let material = Material::new(MaterialDesc::fallback(), main_pipe.images(), device.clone());
         main_pipe.materials_mut().insert(MaterialDesc::fallback(), material);
 
         let ui_pipe = pipe::UiPipe::new(
@@ -219,13 +222,14 @@ impl<'a, 'b> System<'a> for Renderer<'b> {
     type SystemData = (
         Entities<'a>,
         WriteStorage<'a, ModelKey>, ReadStorage<'a, MaterialDesc>, ReadStorage<'a, ModelData>,
+        ReadStorage<'a, Light>,
         Fetch<'a, Camera>,
         Fetch<'a, RLock<Map>>,
         FetchMut<'a, OpalUi>,
         Fetch<'a, WindowClosed>,
     );
 
-    fn run(&mut self, (entities, mut model_keys, material_descs, model_datas, camera, map, mut opal_ui, window_closed): Self::SystemData) {
+    fn run(&mut self, (entities, mut model_keys, material_descs, model_datas, lights, camera, map, mut opal_ui, window_closed): Self::SystemData) {
         use specs::Join;
 
         if *window_closed == true {
@@ -246,9 +250,8 @@ impl<'a, 'b> System<'a> for Renderer<'b> {
 
                 let images = self.main_pipe.images();
                 let set_layout = self.main_pipe.set_layout();
-                let locals = self.main_pipe.locals();
 
-                let material = Material::new(material_key.clone(), images, locals, self.device.clone(), set_layout);
+                let material = Material::new(material_key.clone(), images, self.device.clone());
                 self.main_pipe.materials_mut().insert(material_key.clone(), material);
             }
         }
@@ -339,6 +342,26 @@ impl<'a, 'b> System<'a> for Renderer<'b> {
             })
             .collect::<Vec<_>>();
 
+        let lights = (&*entities, &lights).join()
+            .map(|(entity, light)| {
+                let map = map.read().unwrap();
+
+                let position = match map.location(&entity) {
+                    Some(p) => Vector3::new(p.x as f32, p.y as f32, p.z as f32),
+                    None => Vector3::new(0.0, 0.0, 0.0),
+                };
+
+                let mut model_data = match model_datas.get(entity) {
+                    Some(data) => *data,
+                    None => Default::default(),
+                };
+
+                model_data.translate += position;
+
+                light.to_data(model_data)
+            })
+            .collect::<Vec<_>>();
+
         main_pipe.update_locals(MainLocals {
             proj_view: camera.matrix(ratio).into(),
         });
@@ -347,6 +370,7 @@ impl<'a, 'b> System<'a> for Renderer<'b> {
             &mut command_buffer,
             frame.id(),
             &models[..],
+            &lights[..],
         );
 
         ui_pipe.draw(

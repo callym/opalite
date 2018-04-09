@@ -1,7 +1,7 @@
 use std::{ collections::HashMap, mem, sync::{ Arc, Mutex } };
 use failure::Error;
 use crate::{ Config, Resources, RLock };
-use crate::renderer::{ self, Buffer, BufferData, ImageKey, Image, MaterialDesc, Material, ModelKey, Model, RenderError, PushConstant, Sampler, ShaderKey, Shader };
+use crate::renderer::{ self, Buffer, BufferData, ImageKey, Image, LightData, MaterialDesc, Material, ModelKey, Model, RenderError, PushConstant, Sampler, ShaderKey, Shader };
 use crate::renderer::pipe::{ PipeKey, Pipe };
 use crate::renderer::model::Vertex;
 
@@ -12,6 +12,7 @@ use hal;
 use hal::{ command, format as f, image as i, memory as m, pass, pso };
 use hal::{ Backend, Device };
 use hal::{
+    DescriptorPool,
     Primitive,
     Backbuffer,
 };
@@ -30,9 +31,17 @@ pub struct Locals {
     pub proj_view: [[f32; 4]; 4],
 }
 
+#[derive(BufferData, Serialize, Copy, Clone, Debug)]
+#[uniform]
+pub struct Lights {
+    pub len: u32,
+    pub lights: [LightData; 8],
+}
+
 pub struct MainPipe {
     _device: Arc<Mutex<back::Device>>,
-    viewport: pso::Viewport,
+    desc_set: <B as Backend>::DescriptorSet,
+    viewport: command::Viewport,
     pipeline_layout: <B as Backend>::PipelineLayout,
     render_pass: <B as Backend>::RenderPass,
     pipeline: <B as Backend>::GraphicsPipeline,
@@ -41,6 +50,7 @@ pub struct MainPipe {
     materials: HashMap<MaterialDesc, Material>,
     models: HashMap<ModelKey, RLock<Model>>,
     locals: Buffer<Locals, B>,
+    lights: Buffer<Lights, B>,
     sampler: Arc<Sampler<B>>,
     set_layout: <B as Backend>::DescriptorSetLayout,
 }
@@ -96,15 +106,29 @@ impl MainPipe {
         &self.set_layout
     }
 
-    pub fn draw(&mut self, command_buffer: &mut command::CommandBuffer<B, hal::Graphics>, frame_id: usize, model_locals: &[(&ModelKey, MaterialDesc, <Self as Pipe>::ModelsLocals)]) {
+    pub fn draw(&mut self, command_buffer: &mut command::CommandBuffer<B, hal::Graphics>, frame_id: usize, model_locals: &[(&ModelKey, MaterialDesc, <Self as Pipe>::ModelsLocals)], all_lights: &[LightData]) {
         let Self {
+            desc_set,
             pipeline_layout,
             render_pass,
             pipeline,
             framebuffers,
             viewport,
+            lights,
             ..
         } = self;
+
+        let len = if lights.len() < 8 { lights.len() } else { 8 };
+        let mut chosen_lights: [LightData; 8] = Default::default();
+
+        for (i, light) in all_lights.iter().take(8).enumerate() {
+            chosen_lights[i] = *light;
+        }
+
+        lights.write(&[Lights {
+            len,
+            lights: chosen_lights,
+        }]).unwrap();
 
         command_buffer.set_viewports(&[viewport.clone()]);
         command_buffer.set_scissors(&[viewport.rect]);
@@ -121,12 +145,14 @@ impl MainPipe {
                 ],
             );
 
+            encoder.bind_graphics_descriptor_sets(pipeline_layout, 0, Some(desc_set));
+
             for (model_key, material, model_locals) in model_locals {
                 let model = self.models.get(model_key).unwrap();
                 let model = model.read().unwrap();
 
                 let material = self.materials.get(material).unwrap();
-                encoder.bind_graphics_descriptor_sets(pipeline_layout, 0, Some(&material.descriptor_set));
+                encoder.bind_graphics_descriptor_sets(pipeline_layout, 1, Some(&material.descriptor_set));
 
                 encoder.push_graphics_constants(
                     pipeline_layout,
@@ -169,31 +195,33 @@ impl MainPipe {
 
         let set_layout = {
             let device = device.lock().unwrap();
-            let mut bindings = vec![
+            let bindings = vec![
                 pso::DescriptorSetLayoutBinding {
                     binding: 0,
                     ty: pso::DescriptorType::UniformBuffer,
                     count: 1,
                     stage_flags: ShaderStageFlags::VERTEX | ShaderStageFlags::FRAGMENT,
                 },
+                pso::DescriptorSetLayoutBinding {
+                    binding: 1,
+                    ty: pso::DescriptorType::UniformBuffer,
+                    count: 1,
+                    stage_flags: ShaderStageFlags::VERTEX | ShaderStageFlags::FRAGMENT,
+                },
             ];
-            bindings.extend(Image::<B>::descriptor_set_binding(
-                ShaderStageFlags::FRAGMENT,
-                1,
-            ));
 
             device.create_descriptor_set_layout(&bindings[..])
         };
 
+        let material_set_layout = Material::set_layout(device.clone());
+
         let pipeline_layout = {
             let device = device.lock().unwrap();
-            device.create_pipeline_layout(Some(&set_layout), &[
+            device.create_pipeline_layout(vec![&set_layout, &material_set_layout], &[
                 (ShaderStageFlags::VERTEX, 0..<Self as Pipe>::ModelsLocals::SIZE),
                 (ShaderStageFlags::FRAGMENT, (<Self as Pipe>::ModelsLocals::SIZE)..(<Self as Pipe>::ModelsLocals::SIZE + Material::SIZE)),
             ])
         };
-
-        println!("OFFSET: {}", <Self as Pipe>::ModelsLocals::SIZE);
 
         let render_pass = {
             let device = device.lock().unwrap();
@@ -286,7 +314,7 @@ impl MainPipe {
 
                 pipeline_desc.attributes.extend(Vertex::desc());
 
-                device.create_graphics_pipeline(&pipeline_desc)?
+                device.create_graphics_pipeline(&pipeline_desc).unwrap()
             };
 
             device.destroy_shader_module(vs_module);
@@ -294,6 +322,23 @@ impl MainPipe {
 
             pipeline
         };
+
+        let mut desc_pool = {
+            let device = device.lock().unwrap();
+
+            device.create_descriptor_pool(1, &vec![
+                pso::DescriptorRangeDesc {
+                    ty: pso::DescriptorType::UniformBuffer,
+                    count: 1,
+                },
+                pso::DescriptorRangeDesc {
+                    ty: pso::DescriptorType::UniformBuffer,
+                    count: 1,
+                },
+            ][..])
+        };
+
+        let desc_set = desc_pool.allocate_set(&set_layout);
 
         let depth_view = {
             let device = device.lock().unwrap();
@@ -334,8 +379,21 @@ impl MainPipe {
 
         let locals = Buffer::<<Self as Pipe>::Locals, B>::new(device.clone(), 1, hal::buffer::Usage::UNIFORM, &memory_types).unwrap();
 
-        let viewport = pso::Viewport {
-            rect: pso::Rect {
+        let lights = Buffer::<_, B>::new(device.clone(), 1, hal::buffer::Usage::UNIFORM, &memory_types).unwrap();
+
+        {
+            let device = device.lock().unwrap();
+
+            device.write_descriptor_sets(
+                vec![
+                    locals.descriptor_set(0, 0, &desc_set),
+                    lights.descriptor_set(1, 0, &desc_set),
+                ]
+            );
+        }
+
+        let viewport = command::Viewport {
+            rect: command::Rect {
                 x: 0,
                 y: 0,
                 w: width as _,
@@ -354,6 +412,7 @@ impl MainPipe {
 
         Ok(Self {
             _device: device,
+            desc_set,
             viewport,
             pipeline_layout,
             render_pass,
@@ -363,6 +422,7 @@ impl MainPipe {
             materials: HashMap::new(),
             models: HashMap::new(),
             locals,
+            lights,
             sampler: Arc::new(Sampler::new(sampler)),
             set_layout,
         })

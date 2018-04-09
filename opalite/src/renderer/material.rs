@@ -4,6 +4,7 @@ use crate::renderer::conv::*;
 
 use ordered_float::NotNaN;
 use hal::{ pso, Backend, DescriptorPool, Device };
+use hal::pso::{ PipelineStage, ShaderStageFlags };
 use back::Backend as B;
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
@@ -31,43 +32,49 @@ pub struct Material {
 }
 
 impl Material {
-    pub fn new<L: BufferData>(material: MaterialDesc, images: &HashMap<ImageKey, Image<B>>, locals: &Buffer<L, B>, device: Arc<Mutex<<B as Backend>::Device>>, set_layout: &<B as Backend>::DescriptorSetLayout) -> Self {
+    pub fn new<'a>(material: MaterialDesc, images: &HashMap<ImageKey, Image<B>>, device: Arc<Mutex<<B as Backend>::Device>>) -> Self {
         Self {
             diffuse: material.diffuse.clone(),
-            descriptor_set: Material::descriptor_set(material, images, locals, device, set_layout),
+            descriptor_set: Material::descriptor_set(material, images, device),
         }
     }
 
-    fn descriptor_set<L: BufferData>(material: MaterialDesc, images: &HashMap<ImageKey, Image<B>>, locals: &Buffer<L, B>, device: Arc<Mutex<<B as Backend>::Device>>, set_layout: &<B as Backend>::DescriptorSetLayout) -> <B as Backend>::DescriptorSet {
+    pub fn set_layout(device: Arc<Mutex<<B as Backend>::Device>>) -> <B as Backend>::DescriptorSetLayout {
+        let device = device.lock().unwrap();
+        device.create_descriptor_set_layout(&Image::<B>::descriptor_set_binding(
+            ShaderStageFlags::FRAGMENT,
+            0,
+        )[..])
+    }
+
+    fn descriptor_set<'a>(material: MaterialDesc, images: &HashMap<ImageKey, Image<B>>, device: Arc<Mutex<<B as Backend>::Device>>) -> <B as Backend>::DescriptorSet {
+        let set_layout = Material::set_layout(device.clone());
+
         let device = device.lock().unwrap();
 
         let mut desc_pool = {
-            let mut desc = vec![
-                pso::DescriptorRangeDesc {
-                    ty: pso::DescriptorType::UniformBuffer,
-                    count: 1,
-                }
-            ];
-            // diffuse
-            desc.extend(Image::<B>::descriptor_range());
+            let mut desc_range = vec![];
 
-            device.create_descriptor_pool(1, &desc[..])
+            // diffuse
+            desc_range.extend(Image::<B>::descriptor_range());
+
+            device.create_descriptor_pool(1, &desc_range[..])
         };
 
         let desc_set = desc_pool.allocate_set(&set_layout);
 
-        let mut desc_set_write = vec![locals.descriptor_set(0, 0, &desc_set)];
+        let mut desc_set_write = vec![];
 
         if let SurfaceType::Texture(key) = material.diffuse {
             if let Some(image) = images.get(&key) {
-                desc_set_write.extend(image.descriptor_set(1, &desc_set));
+                desc_set_write.extend(image.descriptor_set(0, &desc_set));
             } else {
                 let image = images.get(&ImageKey(String::from("Blank"))).unwrap();
-                desc_set_write.extend(image.descriptor_set(1, &desc_set));
+                desc_set_write.extend(image.descriptor_set(0, &desc_set));
             }
         } else {
             let image = images.get(&ImageKey(String::from("Blank"))).unwrap();
-            desc_set_write.extend(image.descriptor_set(1, &desc_set));
+            desc_set_write.extend(image.descriptor_set(0, &desc_set));
         }
 
         device.write_descriptor_sets(desc_set_write);

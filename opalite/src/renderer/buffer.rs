@@ -111,3 +111,30 @@ impl BufferData for u32 {
         Vec::new()
     }
 }
+
+macro_rules! buffer_data_array {
+    ($num:expr) => (
+        impl<T: BufferData> BufferData for [T; $num] {
+            const STRIDE: u64 = mem::size_of::<T>() as u64 * $num;
+
+            fn len(&self) -> u64 {
+                $num as u64
+            }
+
+            fn desc() -> Vec<pso::AttributeDesc> {
+                Vec::new()
+            }
+        }
+    )
+}
+
+buffer_data_array!(1);
+buffer_data_array!(2);
+buffer_data_array!(3);
+buffer_data_array!(4);
+buffer_data_array!(5);
+buffer_data_array!(6);
+buffer_data_array!(7);
+buffer_data_array!(8);
+buffer_data_array!(9);
+buffer_data_array!(10);

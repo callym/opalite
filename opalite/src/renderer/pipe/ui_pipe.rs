@@ -44,7 +44,7 @@ pub struct UiPipe<'a> {
     dimensions: (u32, u32),
     device: Arc<Mutex<back::Device>>,
     dpi_factor: f32,
-    viewport: pso::Viewport,
+    viewport: command::Viewport,
     pipeline_layout: <B as Backend>::PipelineLayout,
     render_pass: <B as Backend>::RenderPass,
     pipeline: <B as Backend>::GraphicsPipeline,
@@ -400,9 +400,7 @@ impl<'a> UiPipe<'a> {
 
         let pipeline_layout = {
             let device = device.lock().unwrap();
-            device.create_pipeline_layout(Some(&set_layout), &[
-                (ShaderStageFlags::VERTEX, 0..<Self as Pipe>::ModelsLocals::SIZE),
-            ])
+            device.create_pipeline_layout(Some(&set_layout), &[])
         };
 
         let render_pass = {
@@ -473,15 +471,6 @@ impl<'a> UiPipe<'a> {
                 );
                 pipeline_desc.blender.targets.push(pso::ColorBlendDesc(pso::ColorMask::ALL, pso::BlendState::ALPHA));
 
-                pipeline_desc.depth_stencil = Some(pso::DepthStencilDesc {
-                    depth: pso::DepthTest::On {
-                        fun: pso::Comparison::Less,
-                        write: true,
-                    },
-                    depth_bounds: false,
-                    .. Default::default()
-                });
-
                 pipeline_desc.vertex_buffers.push(pso::VertexBufferDesc {
                     stride: mem::size_of::<UiVertex>() as u32,
                     rate: 0,
@@ -528,8 +517,8 @@ impl<'a> UiPipe<'a> {
 
         let locals = Buffer::<<Self as Pipe>::Locals, B>::new(device.clone(), 1, hal::buffer::Usage::UNIFORM, &memory_types).unwrap();
 
-        let viewport = pso::Viewport {
-            rect: pso::Rect {
+        let viewport = command::Viewport {
+            rect: command::Rect {
                 x: 0,
                 y: 0,
                 w: width as _,
