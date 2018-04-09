@@ -2,6 +2,8 @@
 use std::env;
 
 extern crate opalite;
+#[macro_use] extern crate log;
+extern crate env_logger;
 
 use std::collections::VecDeque;
 
@@ -28,6 +30,8 @@ use opalite::gluon_api::RequireMap;
 mod map;
 
 fn main() {
+    env_logger::init();
+    info!("starting up");
     env::set_current_dir("examples/simple").unwrap();
 
     let mut opal = OpalBuilder::new()
