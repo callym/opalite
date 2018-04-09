@@ -166,11 +166,11 @@ let position =
     | None -> vec3.new 0.0 0.0 0.0
 
 let rect =
-    text.new (\"hello world!\" <> (vec3.to_string position)) \"text-test\" |>
-        text.color (rgba 0.0 0.0 0.0 1.0) |>
-        text.x_y 0.5 0.5 |>
-        text.font_size 32 |>
-        text.build in rect
+    text.new (\"hello world!\" <> (vec3.to_string position)) \"text-test\"
+        |> text.color (rgba 0.0 0.0 0.0 1.0)
+        |> text.x_y 0.5 0.5
+        |> text.font_size 32
+        |> text.build in rect
             "),
         })
         .build();
