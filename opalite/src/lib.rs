@@ -21,7 +21,7 @@ pub extern crate bincode;
 #[macro_use] extern crate failure_derive;
 extern crate glsl_to_spirv;
 pub extern crate gfx_hal as hal;
-extern crate gfx_backend_vulkan as back;
+extern crate gfx_backend_dx12 as back;
 extern crate gluon;
 #[macro_use] extern crate gluon_vm;
 extern crate image;
@@ -100,6 +100,8 @@ pub use renderer::{
     BufferData,
     Camera,
     Renderer,
+    Light,
+    LightType,
     MaterialDesc,
     Model,
     ModelData,

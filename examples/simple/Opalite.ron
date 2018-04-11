@@ -9,5 +9,5 @@
 // uses the base resources folder
         "../../opalite/resources",
     ],
-    font_resolution: 512,
+    font_resolution: 2048,
 )

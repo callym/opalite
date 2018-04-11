@@ -28,7 +28,7 @@ impl Shader {
             Ok(code)
         };
 
-        let compile_shader = |mut path: PathBuf, shader_type: ShaderType| -> Result<Vec<u8>, Error> {
+        let filename = |mut path: PathBuf, shader_type: ShaderType| {
             let filename = match path.file_name() {
                 Some(name) => match name.to_str() {
                     Some(name) => name,
@@ -44,6 +44,12 @@ impl Shader {
             };
 
             path.set_file_name(format!("{}.{}.glsl", filename, ext));
+
+            Ok(path)
+        };
+
+        let compile_shader = |mut path: PathBuf, shader_type: ShaderType| -> Result<Vec<u8>, Error> {
+            let path = filename(path.clone(), shader_type.clone())?;
             let file = resources.get_string(&path)?;
             let mut file = glsl_to_spirv::compile(&file, shader_type)
                 .map_err(|e| failure::err_msg(e))?;

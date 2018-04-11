@@ -1,6 +1,7 @@
 use std::{
     self,
     cmp::{ Eq, PartialEq },
+    collections::HashMap,
     hash::{ Hash, Hasher },
     path::PathBuf,
     sync::{ Arc, Mutex },
@@ -8,14 +9,17 @@ use std::{
 use back::Backend as B;
 use hal::{ self, Backend };
 use cgmath::{ prelude::*, Matrix4, Vector2, Vector3, Vector4 };
+use ordered_float::NotNaN;
 use uuid::Uuid;
 use crate::{ renderer::{ Buffer, BufferData }, RLock };
+use crate::renderer::conv::*;
 
 #[derive(BufferData, Copy, Clone, Debug)]
 pub struct Vertex {
     pub position: Vector3<f32>,
     pub color: Vector4<f32>,
     pub uv: Vector2<f32>,
+    pub normal: Vector3<f32>,
 }
 
 #[derive(BufferData, Copy, Clone, Debug)]
@@ -32,6 +36,7 @@ impl Default for Vertex {
             position: Vector3::zero(),
             color: Vector4::new(1.0, 1.0, 1.0, 1.0),
             uv: Vector2::zero(),
+            normal: Vector3::zero(),
         }
     }
 }
@@ -126,23 +131,44 @@ pub struct Model<V: BufferData = Vertex> {
 }
 
 impl Model {
-    pub(crate) fn quad<C: Into<Vector4<f32>>>(color: C, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Self> {
+    pub fn calculate_normals(mut vertices: Vec<Vertex>, indices: Vec<u32>) -> (Vec<Vertex>, Vec<u32>) {
+        for chunk in indices.chunks(3) {
+            let i1 = chunk[0];
+            let i2 = chunk[1];
+            let i3 = chunk[2];
+
+            let mut v1 = vertices[i1 as usize];
+            let mut v2 = vertices[i2 as usize];
+            let mut v3 = vertices[i3 as usize];
+
+            let diff_1_2 = v1.position - v2.position;
+            let diff_1_2 = diff_1_2.normalize();
+            let diff_3_2 = v3.position - v2.position;
+            let diff_3_2 = diff_3_2.normalize();
+
+            let normal = diff_1_2.cross(diff_3_2);
+            let normal = normal.normalize();
+            v1.normal = normal;
+            v2.normal = normal;
+            v3.normal = normal;
+
+            vertices[i1 as usize] = v1;
+            vertices[i2 as usize] = v2;
+            vertices[i3 as usize] = v3;
+        }
+
+        (vertices, indices)
+    }
+
+    pub(crate) fn quad<C: Into<Vector4<f32>>>(color: C, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType], calculate_normals: bool) -> RLock<Self> {
         let vertices = make_quad(color).to_vec();
-        let mut vertex_buffer = Buffer::<Vertex, B>::new(device.clone(), vertices.len() as u64, hal::buffer::Usage::VERTEX, &memory_types).unwrap();
-        vertex_buffer.write(&vertices[..]).unwrap();
-
         let indices = (0..6 as u32).collect::<Vec<_>>();
-        let mut index_buffer = Buffer::<u32, B>::new(device.clone(), indices.len() as u64, hal::buffer::Usage::INDEX, &memory_types).unwrap();
-        index_buffer.write(&indices[..]).unwrap();
 
-        RLock::new(Self {
-            vertex_buffer,
-            index_buffer,
-        })
-    }
-
-    pub(crate) fn hex<C: Into<Vector4<f32>>>(color: C, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Self> {
-        let (vertices, indices) = make_hex(color);
+        let (vertices, indices) = if calculate_normals {
+            Model::calculate_normals(vertices, indices)
+        } else {
+            (vertices, indices)
+        };
 
         let mut vertex_buffer = Buffer::<Vertex, B>::new(device.clone(), vertices.len() as u64, hal::buffer::Usage::VERTEX, &memory_types).unwrap();
         vertex_buffer.write(&vertices[..]).unwrap();
@@ -156,8 +182,39 @@ impl Model {
         })
     }
 
-    pub(crate) fn sphere<C: Into<Vector4<f32>>>(color: C, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Self> {
+    pub(crate) fn hex<C: Into<Vector4<f32>>>(color: C, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType], calculate_normals: bool) -> RLock<Self> {
+        let (vertices, indices) = make_hex(color);
+        let vertices = vertices.to_vec();
+        let indices = indices.to_vec();
+
+        let (vertices, indices) = if calculate_normals {
+            Model::calculate_normals(vertices, indices)
+        } else {
+            (vertices, indices)
+        };
+
+        let mut vertex_buffer = Buffer::<Vertex, B>::new(device.clone(), vertices.len() as u64, hal::buffer::Usage::VERTEX, &memory_types).unwrap();
+        vertex_buffer.write(&vertices[..]).unwrap();
+
+        let mut index_buffer = Buffer::<u32, B>::new(device.clone(), indices.len() as u64, hal::buffer::Usage::INDEX, &memory_types).unwrap();
+        index_buffer.write(&indices[..]).unwrap();
+
+        RLock::new(Self {
+            vertex_buffer,
+            index_buffer,
+        })
+    }
+
+    pub(crate) fn sphere<C: Into<Vector4<f32>>>(color: C, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType], calculate_normals: bool) -> RLock<Self> {
         let (vertices, indices) = make_sphere(color);
+        let vertices = vertices.to_vec();
+        let indices = indices.to_vec();
+
+        let (vertices, indices) = if calculate_normals {
+            Model::calculate_normals(vertices, indices)
+        } else {
+            (vertices, indices)
+        };
 
         let mut vertex_buffer = Buffer::<Vertex, B>::new(device.clone(), vertices.len() as u64, hal::buffer::Usage::VERTEX, &memory_types).unwrap();
         vertex_buffer.write(&vertices[..]).unwrap();
@@ -179,7 +236,7 @@ pub fn make_quad<C: Into<Vector4<f32>>>(color: C) -> [Vertex; 6] {
     Vertex { position: Vector3::new( 0.5, 0.0, 0.5), color, uv: Vector2::new(1.0, 1.0), .. Default::default() },
     Vertex { position: Vector3::new( 0.5, 0.0,-0.5), color, uv: Vector2::new(1.0, 0.0), .. Default::default() },
 
-    Vertex { position: Vector3::new(-0.5, 0.5, 0.5), color, uv: Vector2::new(0.0, 1.0), .. Default::default() },
+    Vertex { position: Vector3::new(-0.5, 0.0, 0.5), color, uv: Vector2::new(0.0, 1.0), .. Default::default() },
     Vertex { position: Vector3::new( 0.5, 0.0,-0.5), color, uv: Vector2::new(1.0, 0.0), .. Default::default() },
     Vertex { position: Vector3::new(-0.5, 0.0,-0.5), color, uv: Vector2::new(0.0, 0.0), .. Default::default() },
     ]

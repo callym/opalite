@@ -541,7 +541,7 @@ impl<'a> UiPipe<'a> {
             let height = config.font_resolution * (dpi_factor as u32);
 
             const SCALE_TOLERANCE: f32 = 0.1;
-            const POSITION_TOLERANCE: f32 = 2.0;
+            const POSITION_TOLERANCE: f32 = 0.1;
 
             let glyph_cache = rusttype::gpu_cache::CacheBuilder {
                 width,

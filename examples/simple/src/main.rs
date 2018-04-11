@@ -15,7 +15,10 @@ use opalite::{
     CollisionLayer,
     CollisionLayers,
     Data,
+    Light,
+    LightType,
     MaterialDesc,
+    ModelData,
     ModelKey,
     ModelType,
     OpalBuilder,
@@ -172,6 +175,23 @@ let rect =
         |> text.font_size 32
         |> text.build in rect
             "),
+        })
+        .build();
+
+    opal.world_mut().create_entity()
+        .with(InitialPosition((1, 1, 0).into()))
+        .with(ModelKey::new(ModelType::Quad))
+        .with(ModelData {
+            translate: Vector3::new(0.0, -0.5, 0.0),
+            scale: Vector3::new(0.5, 0.5, 0.5),
+            .. Default::default()
+        })
+        .with(MaterialDesc {
+            diffuse: SurfaceType::Color(vec4(1.0, 1.0, 1.0, 1.0)),
+        })
+        .with(Light {
+            ty: LightType::Point,
+            color: Vector3::new(0.5, 0.7, 0.8),
         })
         .build();
 

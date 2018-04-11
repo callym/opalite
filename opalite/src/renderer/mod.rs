@@ -1,5 +1,5 @@
 use std::sync::{ Arc, Mutex };
-use cgmath::Vector3;
+use cgmath::{ prelude::*, Vector3 };
 use failure::Error;
 use specs::{ Entities, Fetch, FetchMut, ReadStorage, System, WriteStorage };
 use winit::Window;
@@ -212,9 +212,9 @@ impl<'a> Renderer<'a> {
                 let mut procedural = procedural.lock().unwrap();
                 procedural.load(self.device.clone(), &self.memory_types[..])
             },
-            ModelType::Quad => Model::quad([1.0, 1.0, 1.0, 1.0], self.device.clone(), &self.memory_types[..]),
-            ModelType::Hex => Model::hex([1.0, 1.0, 1.0, 1.0], self.device.clone(), &self.memory_types[..]),
-            ModelType::Sphere => Model::sphere([1.0, 1.0, 1.0, 1.0], self.device.clone(), &self.memory_types[..]),
+            ModelType::Quad => Model::quad([1.0, 1.0, 1.0, 1.0], self.device.clone(), &self.memory_types[..], true),
+            ModelType::Hex => Model::hex([1.0, 1.0, 1.0, 1.0], self.device.clone(), &self.memory_types[..], true),
+            ModelType::Sphere => Model::sphere([1.0, 1.0, 1.0, 1.0], self.device.clone(), &self.memory_types[..], true),
         }
     }
 }
@@ -333,11 +333,15 @@ impl<'a, 'b> System<'a> for Renderer<'b> {
 
                 let model_data = model_data.to_matrix(&position);
 
+                let mut normal_data = model_data.invert().unwrap();
+                normal_data.transpose_self();
+
                 (
                     model_key,
                     material_desc,
                     MainModelLocals {
                         model: model_data.into(),
+                        normal: normal_data.into(),
                     }
                 )
             })

@@ -105,6 +105,10 @@ impl HexGrid {
             self.triangulate_single(cell);
         }
 
+        let (vertices, indices) = Model::calculate_normals(self.vertices.clone(), self.indices.clone());
+        self.vertices = vertices;
+        self.indices = indices;
+
         self.needs_reload = true;
     }
 
@@ -114,8 +118,8 @@ impl HexGrid {
                 cell.center,
                 [
                     Vector3::new(0.0, 0.0, 0.0),
-                    HexMetrics::CORNERS[i],
                     HexMetrics::CORNERS[i + 1],
+                    HexMetrics::CORNERS[i],
                 ]
             ));
         }

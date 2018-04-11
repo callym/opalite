@@ -30,16 +30,19 @@ impl Light {
             ty,
             color: self.color,
             position: model_data.translate,
+            .. Default::default()
         }
     }
 }
 
 #[derive(BufferData, Clone, Copy, Debug, Serialize)]
 #[uniform]
+#[repr(C)]
 pub struct LightData {
-    pub ty: u32,
     pub color: Vector3<f32>,
+    _p0: u32,
     pub position: Vector3<f32>,
+    pub ty: u32,
 }
 
 impl Default for LightData {
@@ -48,6 +51,7 @@ impl Default for LightData {
             ty: 0,
             color: Vector3::new(1.0, 1.0, 1.0),
             position: Vector3::new(0.0, 0.0, 0.0),
+            _p0: 777,
         }
     }
 }

@@ -103,6 +103,11 @@ impl PushConstant for Material {
             diffuse,
         }).unwrap();
 
-        unsafe { mem::transmute::<Vec<u8>, Vec<u32>>(data) }
+        data.chunks(4).map(|d| {
+            ((d[0] as u32) << 0) |
+            ((d[1] as u32) << 8) |
+            ((d[2] as u32) << 16) |
+            ((d[3] as u32) << 24)
+        }).collect()
     }
 }

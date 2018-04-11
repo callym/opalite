@@ -20,22 +20,29 @@ use hal::format::Swizzle;
 use hal::pass::Subpass;
 use hal::pso::{ PipelineStage, ShaderStageFlags };
 
+const NUM_LIGHTS: u32 = 8;
+
 #[derive(PushConstant, Serialize, Copy, Clone, Debug)]
+#[repr(C)]
 pub struct ModelLocals {
     pub model: [[f32; 4]; 4],
+    pub normal: [[f32; 4]; 4],
 }
 
 #[derive(BufferData, Serialize, Copy, Clone, Debug)]
 #[uniform]
+#[repr(C)]
 pub struct Locals {
     pub proj_view: [[f32; 4]; 4],
 }
 
 #[derive(BufferData, Serialize, Copy, Clone, Debug)]
 #[uniform]
+#[repr(C)]
 pub struct Lights {
     pub len: u32,
-    pub lights: [LightData; 8],
+    _padding: [u32; 3],
+    pub lights: [LightData; NUM_LIGHTS as usize],
 }
 
 pub struct MainPipe {
@@ -118,15 +125,17 @@ impl MainPipe {
             ..
         } = self;
 
-        let len = if lights.len() < 8 { lights.len() } else { 8 };
-        let mut chosen_lights: [LightData; 8] = Default::default();
+        let len = all_lights.len() as u32;
+        let len = if len < NUM_LIGHTS { len } else { NUM_LIGHTS };
+        let mut chosen_lights: [LightData; NUM_LIGHTS as usize] = Default::default();
 
-        for (i, light) in all_lights.iter().take(8).enumerate() {
+        for (i, light) in all_lights.iter().take(NUM_LIGHTS as usize).enumerate() {
             chosen_lights[i] = *light;
         }
 
         lights.write(&[Lights {
             len,
+            _padding: [0, 0, 0],
             lights: chosen_lights,
         }]).unwrap();
 
@@ -218,8 +227,16 @@ impl MainPipe {
         let pipeline_layout = {
             let device = device.lock().unwrap();
             device.create_pipeline_layout(vec![&set_layout, &material_set_layout], &[
-                (ShaderStageFlags::VERTEX, 0..<Self as Pipe>::ModelsLocals::SIZE),
-                (ShaderStageFlags::FRAGMENT, (<Self as Pipe>::ModelsLocals::SIZE)..(<Self as Pipe>::ModelsLocals::SIZE + Material::SIZE)),
+                (
+                    ShaderStageFlags::VERTEX,
+                    0 ..
+                    <Self as Pipe>::ModelsLocals::SIZE
+                ),
+                (
+                    ShaderStageFlags::FRAGMENT,
+                    (<Self as Pipe>::ModelsLocals::SIZE) ..
+                    (<Self as Pipe>::ModelsLocals::SIZE + Material::SIZE)
+                ),
             ])
         };
 
@@ -275,7 +292,12 @@ impl MainPipe {
                     pso::EntryPoint::<B> {
                         entry: "main",
                         module: &fs_module,
-                        specialization: &[],
+                        specialization: &[
+                            pso::Specialization {
+                                id: 0,
+                                value: pso::Constant::U32(NUM_LIGHTS),
+                            }
+                        ],
                     },
                 );
 
@@ -292,7 +314,11 @@ impl MainPipe {
                 let mut pipeline_desc = pso::GraphicsPipelineDesc::new(
                     shader_entries,
                     Primitive::TriangleList,
-                    pso::Rasterizer::FILL,
+                    pso::Rasterizer {
+                        cull_face: Some(pso::CullFace::Front),
+                        ..
+                        pso::Rasterizer::FILL
+                    },
                     &pipeline_layout,
                     subpass,
                 );
@@ -377,8 +403,7 @@ impl MainPipe {
             Backbuffer::Framebuffer(_) => Err(RenderError::FramebufferCreation)?,
         };
 
-        let locals = Buffer::<<Self as Pipe>::Locals, B>::new(device.clone(), 1, hal::buffer::Usage::UNIFORM, &memory_types).unwrap();
-
+        let locals = Buffer::<_, B>::new(device.clone(), 1, hal::buffer::Usage::UNIFORM, &memory_types).unwrap();
         let lights = Buffer::<_, B>::new(device.clone(), 1, hal::buffer::Usage::UNIFORM, &memory_types).unwrap();
 
         {
