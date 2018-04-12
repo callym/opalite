@@ -8,6 +8,7 @@ layout(location = 3) in vec3 normal;
 
 layout(set = 0, binding = 0) uniform Locals {
     mat4 proj_view;
+    vec3 camera_position;
 };
 
 layout(push_constant) uniform ModelLocals {

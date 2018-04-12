@@ -92,7 +92,8 @@ impl HexGrid {
                 .. Default::default()
             })
             .with(MaterialDesc {
-                diffuse: SurfaceType::Color(vec4(0.5, 0.5, 1.0, 1.0)),
+                diffuse: SurfaceType::Color(vec4(0.4, 0.4, 0.8, 1.0)),
+                specular: float(64.0),
             })
             .build();
     }

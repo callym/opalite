@@ -16,18 +16,21 @@ pub enum SurfaceType {
 #[derive(Debug, Component, PartialEq, Eq, Clone, Hash)]
 pub struct MaterialDesc {
     pub diffuse: SurfaceType,
+    pub specular: NotNaN<f32>,
 }
 
 impl MaterialDesc {
     pub fn fallback() -> Self {
         Self {
             diffuse: SurfaceType::Color(vec4(1.0, 0.0, 1.0, 0.0)),
+            specular: float(1.0),
         }
     }
 }
 
 pub struct Material {
     pub diffuse: SurfaceType,
+    pub specular: f32,
     pub descriptor_set: <B as Backend>::DescriptorSet,
 }
 
@@ -35,6 +38,7 @@ impl Material {
     pub fn new<'a>(material: MaterialDesc, images: &HashMap<ImageKey, Image<B>>, device: Arc<Mutex<<B as Backend>::Device>>) -> Self {
         Self {
             diffuse: material.diffuse.clone(),
+            specular: material.specular.into(),
             descriptor_set: Material::descriptor_set(material, images, device),
         }
     }
@@ -86,6 +90,7 @@ impl Material {
 #[derive(Serialize)]
 struct MaterialData {
     diffuse: [f32; 4],
+    specular: f32,
 }
 
 impl PushConstant for Material {
@@ -101,6 +106,7 @@ impl PushConstant for Material {
 
         let data = serialize(&MaterialData {
             diffuse,
+            specular: self.specular,
         }).unwrap();
 
         data.chunks(4).map(|d| {

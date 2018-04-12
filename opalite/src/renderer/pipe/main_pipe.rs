@@ -34,6 +34,7 @@ pub struct ModelLocals {
 #[repr(C)]
 pub struct Locals {
     pub proj_view: [[f32; 4]; 4],
+    pub camera_position: [f32; 3],
 }
 
 #[derive(BufferData, Serialize, Copy, Clone, Debug)]

@@ -369,6 +369,7 @@ impl<'a, 'b> System<'a> for Renderer<'b> {
 
         main_pipe.update_locals(MainLocals {
             proj_view: camera.matrix(ratio).into(),
+            camera_position: camera.position.into(),
         });
 
         main_pipe.draw(

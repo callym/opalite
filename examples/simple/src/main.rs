@@ -50,6 +50,7 @@ fn main() {
         .with(ModelKey::new(ModelType::Hex))
         .with(MaterialDesc {
             diffuse: SurfaceType::Color(vec4(0.75, 0.0, 0.0, 1.0)),
+            specular: float(10.0),
         })
         .build();
 
@@ -82,6 +83,7 @@ fn main() {
         .with(ModelKey::new(ModelType::Sphere))
         .with(MaterialDesc {
             diffuse: SurfaceType::Color(vec4(0.5, 0.5, 0.0, 1.0)),
+            specular: float(32.0),
         })
         .build();
 
@@ -182,12 +184,9 @@ let rect =
         .with(InitialPosition((1, 1, 0).into()))
         .with(ModelKey::new(ModelType::Quad))
         .with(ModelData {
-            translate: Vector3::new(0.0, -0.5, 0.0),
+            translate: Vector3::new(0.0, 0.5, 0.0),
             scale: Vector3::new(0.5, 0.5, 0.5),
             .. Default::default()
-        })
-        .with(MaterialDesc {
-            diffuse: SurfaceType::Color(vec4(1.0, 1.0, 1.0, 1.0)),
         })
         .with(Light {
             ty: LightType::Point,
