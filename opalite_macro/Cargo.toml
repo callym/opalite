@@ -10,6 +10,6 @@ proc-macro = true
 internal = []
 
 [dependencies]
-syn = { version = "0.12", features = ["full"] }
-quote = "0.4"
-proc-macro2 = { version = "0.2", features = ["nightly"] }
+syn = { version = "0.13", features = ["full"] }
+quote = "0.5"
+proc-macro2 = { version = "0.3", features = ["nightly"] }

@@ -23,7 +23,7 @@ layout(location = 3) out vec3 v_normal;
 
 void main() {
     v_position = vec3(model.model * vec4(position, 1.0));
-    v_color = color;
+    v_color = vec4(color.rgb, 1.0);
     v_uv = uv;
     v_normal = vec3(model.normal * vec4(normal, 0.0));
     gl_Position = proj_view * model.model * vec4(position, 1.0);

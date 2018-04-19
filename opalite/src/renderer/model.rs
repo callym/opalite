@@ -2,16 +2,23 @@ use std::{
     self,
     cmp::{ Eq, PartialEq },
     collections::HashMap,
+    fs,
     hash::{ Hash, Hasher },
+    io,
     path::PathBuf,
     sync::{ Arc, Mutex },
 };
 use back::Backend as B;
+use failure::Error;
+use genmesh::{ self, generators::{ self, IndexedPolygon, SharedVertex }, Triangulate, Vertices };
 use hal::{ self, Backend };
 use cgmath::{ prelude::*, Matrix4, Vector2, Vector3, Vector4 };
 use ordered_float::NotNaN;
+use gltf::{ self, json::mesh::Mode };
+use gltf_importer;
+use gltf_utils::PrimitiveIterators;
 use uuid::Uuid;
-use crate::{ renderer::{ Buffer, BufferData }, RLock };
+use crate::{ renderer::{ Buffer, BufferData }, Resources, RLock };
 use crate::renderer::conv::*;
 
 #[derive(BufferData, Copy, Clone, Debug)]
@@ -110,7 +117,7 @@ impl ModelData {
 }
 
 pub trait ProceduralModel {
-    fn load(&mut self, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Model>;
+    fn load(&mut self, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> Vec<RLock<Model>>;
     fn needs_reload(&mut self) -> bool {
         false
     }
@@ -134,8 +141,8 @@ impl Model {
     pub fn calculate_normals(mut vertices: Vec<Vertex>, indices: Vec<u32>) -> (Vec<Vertex>, Vec<u32>) {
         for chunk in indices.chunks(3) {
             let i1 = chunk[0];
-            let i2 = chunk[1];
-            let i3 = chunk[2];
+            let i2 = chunk[2];
+            let i3 = chunk[1];
 
             let mut v1 = vertices[i1 as usize];
             let mut v2 = vertices[i2 as usize];
@@ -158,6 +165,65 @@ impl Model {
         }
 
         (vertices, indices)
+    }
+
+    pub fn from_file(path: &PathBuf, resources: &RLock<Resources>, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> Result<Vec<RLock<Self>>, Error> {
+        let resources = resources.read().unwrap();
+        let gltf = resources.get(path)?;
+        let (gltf, buffers) = gltf_importer::import_data_slice(&gltf[..], path, &Default::default())?;
+
+        let mut output_meshes = vec![];
+
+        for mesh in gltf.meshes() {
+            let primitive = mesh.primitives().next().ok_or(format_err!(".gltf doesn't contain any primitives"))?;
+
+            let positions = primitive.positions(&buffers).ok_or(format_err!("primitive doesn't have positions"))?;
+            let mut vertices: Vec<_> = positions
+                .map(|p| Vertex { position: p.into(), .. Default::default() })
+                .collect();
+
+            let indices: Vec<_> = if let Some(indices) = <_ as PrimitiveIterators>::indices(&primitive, &buffers) {
+                indices.into_u32().collect()
+            } else {
+                (0 .. vertices.len() as u32).collect()
+            };
+
+            let (mut vertices, indices) = if let Some(normals) = primitive.normals(&buffers) {
+                for (i, normal) in normals.enumerate() {
+                    vertices[i].normal = normal.into();
+                }
+                (vertices, indices)
+            } else {
+                Model::calculate_normals(vertices, indices)
+            };
+
+            if let Some(colors) = primitive.colors(0, &buffers) {
+                let colors = colors.into_rgba_f32();
+                for (i, color) in colors.enumerate() {
+                    vertices[i].color = color.into();
+                }
+            }
+
+            if let Some(uvs) = primitive.tex_coords(0, &buffers) {
+                let uvs = uvs.into_f32();
+                for (i, uv) in uvs.enumerate() {
+                    vertices[i].uv = uv.into();
+                }
+            }
+
+            let mut vertex_buffer = Buffer::<Vertex, B>::new(device.clone(), vertices.len() as u64, hal::buffer::Usage::VERTEX, &memory_types).unwrap();
+            vertex_buffer.write(&vertices[..]).unwrap();
+
+            let mut index_buffer = Buffer::<u32, B>::new(device.clone(), indices.len() as u64, hal::buffer::Usage::INDEX, &memory_types).unwrap();
+            index_buffer.write(&indices[..]).unwrap();
+
+            output_meshes.push(RLock::new(Self {
+                vertex_buffer,
+                index_buffer,
+            }));
+        }
+
+        Ok(output_meshes)
     }
 
     pub(crate) fn quad<C: Into<Vector4<f32>>>(color: C, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType], calculate_normals: bool) -> RLock<Self> {
@@ -205,16 +271,8 @@ impl Model {
         })
     }
 
-    pub(crate) fn sphere<C: Into<Vector4<f32>>>(color: C, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType], calculate_normals: bool) -> RLock<Self> {
+    pub(crate) fn sphere<C: Into<Vector4<f32>>>(color: C, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Self> {
         let (vertices, indices) = make_sphere(color);
-        let vertices = vertices.to_vec();
-        let indices = indices.to_vec();
-
-        let (vertices, indices) = if calculate_normals {
-            Model::calculate_normals(vertices, indices)
-        } else {
-            (vertices, indices)
-        };
 
         let mut vertex_buffer = Buffer::<Vertex, B>::new(device.clone(), vertices.len() as u64, hal::buffer::Usage::VERTEX, &memory_types).unwrap();
         vertex_buffer.write(&vertices[..]).unwrap();
@@ -280,29 +338,26 @@ pub fn make_hex<C: Into<Vector4<f32>>>(color: C) -> ([Vertex; 7], [u32; 18]) {
 }
 
 pub fn make_sphere<C: Into<Vector4<f32>>>(color: C) -> (Vec<Vertex>, Vec<u32>) {
-    let x = 0.525731112119133606;
-    let z = 0.850650808352039932;
-    let n = 0.0;
-
-    let icosahedron = vec![
-        [-x, n, z], [x, n, z], [-x, n,-z], [x, n,-z],
-        [n, z, x], [n, z,-x], [n,-z, x], [n,-z,-x],
-        [z, x, n], [-z, x, n], [z,-x, n], [-z,-x, n],
-    ];
-
-    let indices = vec![
-        0, 4, 1, 0, 9, 4, 9, 5, 4, 4, 5, 8, 4, 8, 1,
-        8, 10, 1, 8, 3, 10, 5, 3, 8, 5, 2, 3, 2, 7, 3,
-        7, 10, 3, 7, 6, 10, 7, 11, 6, 11, 0, 6, 0, 1, 6,
-        6, 1, 10, 9, 0, 11, 9, 11, 2, 9, 2, 5, 7, 2, 11,
-    ];
-
     let color: Vector4<_> = color.into();
-    let vertices = icosahedron.iter().map(|v| Vertex {
-        position: (*v).into(),
-        color,
-        .. Default::default()
-    }).collect();
+    let generator = generators::IcoSphere::subdivide(1);
+
+    let vertices = generator
+        .shared_vertex_iter()
+        .map(|v| Vertex {
+            position: v.pos.into(),
+            color,
+            normal: v.normal.into(),
+            ..
+            Default::default()
+        })
+        .collect();
+
+    let indices = generator
+        .indexed_polygon_iter()
+        .triangulate()
+        .vertices()
+        .map(|i| i as u32)
+        .collect();
 
     (vertices, indices)
 }

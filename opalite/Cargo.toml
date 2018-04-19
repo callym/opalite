@@ -12,7 +12,11 @@ conrod = { git = "https://github.com/callym/conrod", features = ["winit"] }
 conrod_derive = "=0.1.0"
 failure = "0.1"
 failure_derive = "0.1"
+genmesh = { git = "https://github.com/gfx-rs/genmesh" }
 glsl-to-spirv = "0.1"
+gltf = "0.10"
+gltf-importer = "0.10"
+gltf-utils = "0.10"
 gluon = "0.7.1"
 gluon_vm = "0.7.1"
 image = "0.18"

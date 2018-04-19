@@ -119,8 +119,8 @@ impl HexGrid {
                 cell.center,
                 [
                     Vector3::new(0.0, 0.0, 0.0),
-                    HexMetrics::CORNERS[i + 1],
                     HexMetrics::CORNERS[i],
+                    HexMetrics::CORNERS[i + 1],
                 ]
             ));
         }
@@ -173,7 +173,7 @@ impl HexGrid {
 }
 
 impl ProceduralModel for HexGrid {
-    fn load(&mut self, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Model> {
+    fn load(&mut self, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> Vec<RLock<Model>> {
         if self.model.is_some() {
             let model = self.model.as_ref().unwrap();
             let mut model = model.write().unwrap();
@@ -193,7 +193,7 @@ impl ProceduralModel for HexGrid {
             self.model = Some(model);
         };
 
-        self.model.as_ref().unwrap().get_reader()
+        vec![self.model.as_ref().unwrap().get_reader()]
     }
 
     fn needs_reload(&mut self) -> bool {
@@ -212,7 +212,7 @@ pub struct HexCell {
 }
 
 impl ProceduralModel for HexCell {
-    fn load(&mut self, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> RLock<Model> {
+    fn load(&mut self, device: Arc<Mutex<<B as Backend>::Device>>, memory_types: &[hal::MemoryType]) -> Vec<RLock<Model>> {
         let vertices = model::make_quad([1.0, 1.0, 1.0, 1.0]).to_vec();
 
         let mut vertex_buffer = Buffer::<Vertex, B>::new(device.clone(), vertices.len() as u64, hal::buffer::Usage::VERTEX, &memory_types).unwrap();
@@ -222,9 +222,9 @@ impl ProceduralModel for HexCell {
         let mut index_buffer = Buffer::<u32, B>::new(device.clone(), indices.len() as u64, hal::buffer::Usage::INDEX, &memory_types).unwrap();
         index_buffer.write(&indices[..]).unwrap();
 
-        RLock::new(Model {
+        vec![RLock::new(Model {
             vertex_buffer,
             index_buffer,
-        })
+        })]
     }
 }

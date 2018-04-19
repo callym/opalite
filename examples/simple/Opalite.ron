@@ -8,6 +8,8 @@
 //        "resources.zip",
 // uses the base resources folder
         "../../opalite/resources",
+// uses the Kronos gltf examples repo, outside of this repo
+        "../../../glTF-Sample-Models/2.0",
     ],
     font_resolution: 2048,
 )

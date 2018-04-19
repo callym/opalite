@@ -5,7 +5,10 @@ extern crate opalite;
 #[macro_use] extern crate log;
 extern crate env_logger;
 
-use std::collections::VecDeque;
+use std::{
+    collections::VecDeque,
+    path::PathBuf,
+};
 
 use opalite::cgmath::Vector3;
 use opalite::{
@@ -44,13 +47,27 @@ fn main() {
         .add_world()
         .build();
 
-    opal.world_mut().create_entity()
+    /*opal.world_mut().create_entity()
         .with(InitialPosition((0, 1, 0).into()))
         .with(CollisionLayers::new([CollisionLayer::PLAYER].iter()))
         .with(ModelKey::new(ModelType::Hex))
         .with(MaterialDesc {
             diffuse: SurfaceType::Color(vec4(0.75, 0.0, 0.0, 1.0)),
             specular: float(10.0),
+        })
+        .build();*/
+
+    opal.world_mut().create_entity()
+        .with(InitialPosition((0, 1, 0).into()))
+        .with(CollisionLayers::new([CollisionLayer::PLAYER].iter()))
+        .with(ModelKey::new(ModelType::File("Suzanne/glTF/Suzanne.glb".into())))
+        .with(MaterialDesc {
+            diffuse: SurfaceType::Color(vec4(1.0, 1.0, 1.0, 1.0)),
+            specular: float(10.0),
+        })
+        .with(ModelData {
+            scale: Vector3::new(0.5, 0.5, 0.5),
+            .. Default::default()
         })
         .build();
 
@@ -182,11 +199,15 @@ let rect =
 
     opal.world_mut().create_entity()
         .with(InitialPosition((1, 1, 0).into()))
-        .with(ModelKey::new(ModelType::Quad))
+//        .with(ModelKey::new(ModelType::Sphere))
         .with(ModelData {
-            translate: Vector3::new(0.0, 0.5, 0.0),
-            scale: Vector3::new(0.5, 0.5, 0.5),
+            translate: Vector3::new(0.0, 0.0, 1.0),
+//            scale: [0.3; 3].into(),
             .. Default::default()
+        })
+        .with(MaterialDesc {
+            diffuse: SurfaceType::Color(vec4(1.0, 0.0, 1.0, 1.0)),
+            specular: float(32.0),
         })
         .with(Light {
             ty: LightType::Point,

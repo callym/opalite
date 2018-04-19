@@ -56,7 +56,7 @@ pub struct MainPipe {
     framebuffers: Vec<<B as Backend>::Framebuffer>,
     images: HashMap<ImageKey, Image<B>>,
     materials: HashMap<MaterialDesc, Material>,
-    models: HashMap<ModelKey, RLock<Model>>,
+    models: HashMap<ModelKey, Vec<RLock<Model>>>,
     locals: Buffer<Locals, B>,
     lights: Buffer<Lights, B>,
     sampler: Arc<Sampler<B>>,
@@ -98,11 +98,11 @@ impl MainPipe {
         &mut self.materials
     }
 
-    pub fn models(&self) -> &HashMap<ModelKey, RLock<<Self as Pipe>::Models>> {
+    pub fn models(&self) -> &HashMap<ModelKey, Vec<RLock<<Self as Pipe>::Models>>> {
         &self.models
     }
 
-    pub fn models_mut(&mut self) -> &mut HashMap<ModelKey, RLock<<Self as Pipe>::Models>> {
+    pub fn models_mut(&mut self) -> &mut HashMap<ModelKey, Vec<RLock<<Self as Pipe>::Models>>> {
         &mut self.models
     }
 
@@ -158,33 +158,35 @@ impl MainPipe {
             encoder.bind_graphics_descriptor_sets(pipeline_layout, 0, Some(desc_set));
 
             for (model_key, material, model_locals) in model_locals {
-                let model = self.models.get(model_key).unwrap();
-                let model = model.read().unwrap();
+                let models = self.models.get(model_key).unwrap();
+                for model in models {
+                    let model = model.read().unwrap();
 
-                let material = self.materials.get(material).unwrap();
-                encoder.bind_graphics_descriptor_sets(pipeline_layout, 1, Some(&material.descriptor_set));
+                    let material = self.materials.get(material).unwrap();
+                    encoder.bind_graphics_descriptor_sets(pipeline_layout, 1, Some(&material.descriptor_set));
 
-                encoder.push_graphics_constants(
-                    pipeline_layout,
-                    ShaderStageFlags::VERTEX,
-                    0,
-                    &model_locals.data()[..],
-                );
+                    encoder.push_graphics_constants(
+                        pipeline_layout,
+                        ShaderStageFlags::VERTEX,
+                        0,
+                        &model_locals.data()[..],
+                    );
 
-                encoder.push_graphics_constants(
-                    pipeline_layout,
-                    ShaderStageFlags::FRAGMENT,
-                    <Self as Pipe>::ModelsLocals::SIZE,
-                    &material.data()[..],
-                );
+                    encoder.push_graphics_constants(
+                        pipeline_layout,
+                        ShaderStageFlags::FRAGMENT,
+                        <Self as Pipe>::ModelsLocals::SIZE,
+                        &material.data()[..],
+                    );
 
-                encoder.bind_vertex_buffers(pso::VertexBufferSet(vec![(model.vertex_buffer.buffer(), 0)]));
-                encoder.bind_index_buffer(hal::buffer::IndexBufferView {
-                    buffer: model.index_buffer.buffer(),
-                    offset: 0,
-                    index_type: hal::IndexType::U32,
-                });
-                encoder.draw_indexed(0..model.index_buffer.len(), 0, 0..1);
+                    encoder.bind_vertex_buffers(pso::VertexBufferSet(vec![(model.vertex_buffer.buffer(), 0)]));
+                    encoder.bind_index_buffer(hal::buffer::IndexBufferView {
+                        buffer: model.index_buffer.buffer(),
+                        offset: 0,
+                        index_type: hal::IndexType::U32,
+                    });
+                    encoder.draw_indexed(0..model.index_buffer.len(), 0, 0..1);
+                }
             }
         }
     }
@@ -316,7 +318,7 @@ impl MainPipe {
                     shader_entries,
                     Primitive::TriangleList,
                     pso::Rasterizer {
-                        cull_face: Some(pso::CullFace::Front),
+                        cull_face: Some(pso::CullFace::Back),
                         ..
                         pso::Rasterizer::FILL
                     },

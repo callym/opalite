@@ -205,16 +205,16 @@ impl<'a> Renderer<'a> {
         Image::new(key.0.clone(), &self.limits, self.device.clone(), &self.memory_types[..], sampler).unwrap()
     }
 
-    pub fn load_model(&mut self, key: &mut ModelKey) -> RLock<Model> {
+    pub fn load_model(&mut self, key: &mut ModelKey) -> Vec<RLock<Model>> {
         match key.ty_mut() {
-            ModelType::File(_) => unimplemented!(),
+            ModelType::File(path) => Model::from_file(path, &self.resources, self.device.clone(), &self.memory_types[..]).unwrap(),
             ModelType::Procedural(procedural) => {
                 let mut procedural = procedural.lock().unwrap();
                 procedural.load(self.device.clone(), &self.memory_types[..])
             },
-            ModelType::Quad => Model::quad([1.0, 1.0, 1.0, 1.0], self.device.clone(), &self.memory_types[..], true),
-            ModelType::Hex => Model::hex([1.0, 1.0, 1.0, 1.0], self.device.clone(), &self.memory_types[..], true),
-            ModelType::Sphere => Model::sphere([1.0, 1.0, 1.0, 1.0], self.device.clone(), &self.memory_types[..], true),
+            ModelType::Quad => vec![Model::quad([1.0, 1.0, 1.0, 1.0], self.device.clone(), &self.memory_types[..], true)],
+            ModelType::Hex => vec![Model::hex([1.0, 1.0, 1.0, 1.0], self.device.clone(), &self.memory_types[..], true)],
+            ModelType::Sphere => vec![Model::sphere([1.0, 1.0, 1.0, 1.0], self.device.clone(), &self.memory_types[..])],
         }
     }
 }
